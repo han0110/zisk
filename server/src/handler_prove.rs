@@ -60,6 +60,8 @@ impl ZiskServiceProveHandler {
             move || {
                 let start = std::time::Instant::now();
 
+                witness_lib.set_stdin(zisk_common::io::ZiskStdin::from_file(request_input.clone()).unwrap());
+
                 let result = proofman
                     .generate_proof_from_lib(
                         ProvePhaseInputs::Full(ProofInfo::new(Some(request_input), 1, vec![0], 0)),
