@@ -155,14 +155,12 @@ impl From<SystemStatusDto> for SystemStatusResponse {
 
 impl From<LaunchProofRequestDto> for LaunchProofRequest {
     fn from(dto: LaunchProofRequestDto) -> Self {
-        let (input_mode, input_path) = match dto.input_mode {
-            InputModeDto::InputModeNone => (InputMode::None, None),
+        let (input_mode, input_path, input_data) = match dto.input_mode {
+            InputModeDto::InputModeNone => (InputMode::None, None, None),
             InputModeDto::InputModePath(path) => {
-                (InputMode::Path, Some(path.display().to_string()))
+                (InputMode::Path, Some(path.display().to_string()), None)
             }
-            InputModeDto::InputModeData(path) => {
-                (InputMode::Data, Some(path.display().to_string()))
-            }
+            InputModeDto::InputModeData(bytes) => (InputMode::Data, None, Some(bytes)),
         };
 
         LaunchProofRequest {
@@ -170,6 +168,7 @@ impl From<LaunchProofRequestDto> for LaunchProofRequest {
             compute_capacity: dto.compute_capacity,
             input_mode: input_mode.into(),
             input_path,
+            input_data,
             simulated_node: dto.simulated_node,
         }
     }
@@ -198,8 +197,8 @@ impl TryFrom<LaunchProofRequest> for LaunchProofRequestDto {
                 }
                 InputMode::Data => {
                     // Use the input_path field when available
-                    if let Some(path) = req.input_path {
-                        InputModeDto::InputModeData(PathBuf::from(path))
+                    if let Some(input_data) = req.input_data {
+                        InputModeDto::InputModeData(input_data)
                     } else {
                         InputModeDto::InputModeNone // Fallback if path is missing
                     }

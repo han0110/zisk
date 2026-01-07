@@ -70,7 +70,7 @@ pub struct SystemStatusDto {
 pub enum InputModeDto {
     InputModeNone = 0,          // No input provided
     InputModePath(PathBuf) = 1, // Input will be provided as a path
-    InputModeData(PathBuf) = 2, // Input data will be sent directly
+    InputModeData(Vec<u8>) = 3, // Input data will be sent directly
 }
 
 impl Display for InputModeDto {
@@ -78,7 +78,7 @@ impl Display for InputModeDto {
         match self {
             InputModeDto::InputModeNone => write!(f, "None"),
             InputModeDto::InputModePath(path) => write!(f, "Path({})", path.display()),
-            InputModeDto::InputModeData(path) => write!(f, "Data({})", path.display()),
+            InputModeDto::InputModeData(bytes) => write!(f, "Data({} bytes)", bytes.len()),
         }
     }
 }
