@@ -1,0 +1,78 @@
+services:
+  zisk-coordinator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: zisk-distributed:v0.15.0-gpu
+    ports:
+      - "50051:50051"
+    # volumes:
+      # Uncomment to override config
+      # - ./coordinator-config:/app/config/coordinator
+      # Uncomment to persist log
+      # - ./logs:/var/log/distributed
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+    command: 
+      - "zisk-coordinator"
+      - "--config"
+      - "/app/config/coordinator/prod.toml"
+
+  zisk-worker-0: &zisk-worker
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: zisk-distributed:v0.15.0-gpu
+    volumes:
+      # Mount ELF
+      - ${ELF_PATH}:/app/elf:ro
+      # Uncomment to override config
+      # - ./worker-config:/app/config/worker
+      # Uncomment to persist log
+      # - ./logs:/var/log/distributed
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+    command: 
+      - "zisk-worker"
+      - "--config"
+      - "/app/config/worker/prod.toml"
+      - "--coordinator-url"
+      - "http://zisk-coordinator:50051"
+      - "--elf"
+      - "/app/elf"
+    depends_on:
+      - zisk-coordinator
+    shm_size: 32G
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "zisk-worker"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+
+  # zisk-worker-x:
+  #     <<: *zisk-worker
+  #     deploy:
+  #       resources:
+  #         reservations:
+  #           devices:
+  #             - driver: nvidia
+  #               device_ids: ['x']
+  #               capabilities: [gpu]
+
+networks:
+  default:
+    name: zisk-distributed
