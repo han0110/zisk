@@ -6,6 +6,7 @@ use cargo_zisk::{
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
+use std::process::Command;
 use zisk_distributed_worker::{
     config::{ProverServiceConfigDto, WorkerServiceConfig},
     ProverConfig, WorkerNode,
@@ -137,6 +138,66 @@ async fn main() -> Result<()> {
     .await?;
 
     print_banner();
+
+    // Run check-setup to generate *.consttree
+    println!();
+    println!("Running cargo-zisk check-setup -a...");
+
+    let mut check_setup_cmd = Command::new("cargo-zisk");
+    check_setup_cmd.arg("check-setup").arg("-a");
+    if let Some(ref proving_key) = cli.proving_key {
+        check_setup_cmd.arg("-k").arg(proving_key);
+    }
+    if cli.final_snark {
+        check_setup_cmd.arg("-f");
+    }
+    for _ in 0..cli.verbose {
+        check_setup_cmd.arg("-v");
+    }
+    let check_setup_output = check_setup_cmd.output().map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to execute cargo-zisk check-setup: {}. Make sure cargo-zisk is installed.",
+            e
+        )
+    })?;
+    if !check_setup_output.status.success() {
+        let stderr = String::from_utf8_lossy(&check_setup_output.stderr);
+        let stdout = String::from_utf8_lossy(&check_setup_output.stdout);
+        eprintln!("{}", stdout);
+        eprintln!("{}", stderr);
+        anyhow::bail!("cargo-zisk check-setup failed. Please run 'cargo-zisk check-setup -a' manually to diagnose the issue.");
+    }
+
+    println!("{}", "✓ Proving key setup verified".bright_green());
+
+    // Run ROM setup for the specified ELF file
+    println!();
+    println!("Running cargo-zisk rom-setup for {}...", cli.elf.display());
+
+    let mut rom_setup_cmd = Command::new("cargo-zisk");
+    rom_setup_cmd.arg("rom-setup").arg("--elf").arg(&cli.elf);
+    if let Some(ref proving_key) = cli.proving_key {
+        rom_setup_cmd.arg("-k").arg(proving_key);
+    }
+    if cli.verbose > 0 {
+        rom_setup_cmd.arg("-v");
+    }
+    let rom_setup_output = rom_setup_cmd.output().map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to execute cargo-zisk rom-setup: {}. Make sure cargo-zisk is installed.",
+            e
+        )
+    })?;
+    if !rom_setup_output.status.success() {
+        let stderr = String::from_utf8_lossy(&rom_setup_output.stderr);
+        let stdout = String::from_utf8_lossy(&rom_setup_output.stdout);
+        eprintln!("{}", stdout);
+        eprintln!("{}", stderr);
+        anyhow::bail!("cargo-zisk rom-setup failed. Please run 'cargo-zisk rom-setup --elf {}' manually to diagnose the issue.", cli.elf.display());
+    }
+
+    println!("{}", "✓ ROM setup completed".bright_green());
+    println!();
 
     let prover_config_dto = ProverServiceConfigDto {
         elf: cli.elf.clone(),
