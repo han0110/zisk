@@ -42,6 +42,12 @@ pub async fn handle(
         (InputMode::None, None)
     };
 
+    let input_data = if matches!(input_mode, InputMode::Data) {
+        Some(tokio::fs::read(input_path.as_ref().unwrap()).await?)
+    } else {
+        None
+    };
+
     // ID will be id if present, else input file name or random UUID
     let data_id = if let Some(id) = data_id {
         id
@@ -56,6 +62,7 @@ pub async fn handle(
         compute_capacity,
         input_mode: input_mode.into(),
         input_path,
+        input_data,
         simulated_node,
     };
 

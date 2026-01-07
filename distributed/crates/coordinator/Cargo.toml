@@ -42,3 +42,6 @@ async-stream = "0.3"
 
 witness = { workspace = true }
 clap = { workspace = true }
+
+axum = "0.7"
+tracing-subscriber = { workspace = true }

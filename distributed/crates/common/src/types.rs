@@ -344,6 +344,7 @@ impl Job {
     }
 
     pub fn cleanup(&mut self) {
+        self.input_mode = InputModeDto::InputModeNone;
         self.partitions.clear();
         self.results.clear();
         self.stats.clear();
