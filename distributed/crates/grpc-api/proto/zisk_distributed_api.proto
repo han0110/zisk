@@ -22,6 +22,9 @@ service ZiskDistributedApi {
   
   // Coordinator control
   rpc LaunchProof(LaunchProofRequest) returns (LaunchProofResponse);
+
+  // Client subscription to job completion
+  rpc SubscribeToProof(SubscribeToProofRequest) returns (stream ProofStatusUpdate);
 }
 
 // Standardized error response
@@ -163,6 +166,27 @@ message LaunchProofResponse {
     string job_id = 1;
     ErrorResponse error = 2;
   }
+}
+
+// ============================================================================
+// Client Subscription Messages
+// ============================================================================
+
+message SubscribeToProofRequest {
+  string job_id = 1;
+}
+
+message ProofStatusUpdate {
+  string job_id = 1;
+  ProofStatusType status = 2;
+  optional FinalProof final_proof = 3;
+  optional ErrorResponse error = 4;
+  uint64 duration_ms = 5;
+}
+
+enum ProofStatusType {
+  PROOF_STATUS_COMPLETED = 0;
+  PROOF_STATUS_FAILED = 1;
 }
 
 // ============================================================================

@@ -49,7 +49,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{oneshot, RwLock};
 use tracing::{error, info, warn};
 use zisk_common::io::{StreamSource, ZiskStream};
 use zisk_common::AsmExecutionInfo;
@@ -64,6 +64,7 @@ use zisk_distributed_common::{
     ProveParamsDto, StatusInfoDto, StreamMessageKind, SystemStatusDto, WorkerErrorDto, WorkerId,
     WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
 };
+use zisk_distributed_grpc_api::{FinalProof, ProofStatusType, ProofStatusUpdate};
 
 use zisk_sdk::ZiskProofWithPublicValues;
 
@@ -122,6 +123,8 @@ pub struct Coordinator {
 
     /// Number of reconnections accumulated.
     reconnections: AtomicU64,
+
+    client_subscriptions: Arc<DashMap<JobId, Vec<oneshot::Sender<ProofStatusUpdate>>>>,
 }
 
 impl Coordinator {
@@ -140,6 +143,7 @@ impl Coordinator {
             jobs: DashMap::new(),
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
+            client_subscriptions: Arc::new(DashMap::new()),
         }
     }
 
@@ -434,6 +438,8 @@ impl Coordinator {
             self.send_webhook(webhook_url.clone(), &job);
         }
 
+        self.notify_subscribers(job_id, &job).await;
+
         let state = job.state.clone();
         drop(job);
         let mut job = job_entry.write().await;
@@ -458,6 +464,8 @@ impl Coordinator {
 
         // Clean up process data for the job
         job.cleanup();
+
+        self.client_subscriptions.remove(job_id);
 
         Ok(())
     }
@@ -535,6 +543,51 @@ impl Coordinator {
                 }
             }
         });
+    }
+
+    pub async fn subscribe_to_proof_completion(
+        &self,
+        job_id: &JobId,
+        sender: oneshot::Sender<ProofStatusUpdate>,
+    ) -> CoordinatorResult<bool> {
+        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job = job_entry.read().await;
+
+        match job.state {
+            JobState::Completed | JobState::Failed => {
+                Err(CoordinatorError::NotFoundOrInaccessible)
+            }
+            JobState::Running(_) | JobState::Created => {
+                self.client_subscriptions.entry(job_id.clone()).or_default().push(sender);
+                Ok(true)
+            }
+        }
+    }
+
+    async fn notify_subscribers(&self, job_id: &JobId, job: &Job) {
+        if let Some((_, senders)) = self.client_subscriptions.remove(job_id) {
+            let status = match job.state {
+                JobState::Completed => ProofStatusType::ProofStatusCompleted,
+                JobState::Failed => ProofStatusType::ProofStatusFailed,
+                _ => unreachable!(),
+            };
+            let update = ProofStatusUpdate {
+                job_id: job_id.as_string(),
+                status: status.into(),
+                final_proof: job.final_proof.as_ref().map(|values| FinalProof {
+                    values: values.clone(),
+                    executed_steps: job.executed_steps.unwrap_or(0),
+                }),
+                error: None,
+                duration_ms: job.duration_ms.unwrap_or(0),
+            };
+
+            let count = senders.len();
+            for sender in senders {
+                let _ = sender.send(update.clone());
+            }
+            info!("Notified {count} subscriber(s) about completion of {job_id}");
+        }
     }
 
     /// Creates a new proof generation job with allocated resources.
