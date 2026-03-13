@@ -642,15 +642,7 @@ impl Coordinator {
             InputsModeDto::InputsPath(ref inputs_path) => {
                 InputSourceDto::InputPath(inputs_path.clone())
             }
-            InputsModeDto::InputsData(ref inputs_uri) => {
-                let inputs = tokio::fs::read(inputs_uri).await.map_err(|e| {
-                    CoordinatorError::Internal(format!(
-                        "Failed to read input data for job {}: {}",
-                        job.job_id, e
-                    ))
-                })?;
-                InputSourceDto::InputData(inputs)
-            }
+            InputsModeDto::InputsData(ref bytes) => InputSourceDto::InputData(bytes.to_vec()),
             InputsModeDto::InputsNone => InputSourceDto::InputNull,
         };
 

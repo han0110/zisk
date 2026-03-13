@@ -356,6 +356,8 @@ impl Job {
     }
 
     pub fn cleanup(&mut self) {
+        self.inputs_mode = InputsModeDto::InputsNone;
+        self.hints_mode = HintsModeDto::HintsNone;
         self.partitions.clear();
         self.results.clear();
         self.stats.clear();

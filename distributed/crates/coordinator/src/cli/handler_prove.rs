@@ -44,6 +44,12 @@ pub async fn handle(
         Some(_) => HintsMode::Path,
     };
 
+    let input_data = if matches!(inputs_mode, InputMode::Data) {
+        Some(tokio::fs::read(inputs_uri.as_ref().unwrap()).await?)
+    } else {
+        None
+    };
+
     // ID will be id if present, else input file name or random UUID
     let data_id = if let Some(id) = data_id {
         id
@@ -69,6 +75,7 @@ pub async fn handle(
         minimal_compute_capacity,
         inputs_mode: inputs_mode.into(),
         inputs_uri,
+        input_data,
         hints_mode: hints_mode.into(),
         hints_uri,
         simulated_node,
