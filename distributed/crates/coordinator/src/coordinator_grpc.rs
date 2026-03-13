@@ -7,7 +7,7 @@
 use async_stream::stream;
 use futures_util::{Stream, StreamExt};
 use std::{pin::Pin, sync::Arc};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
 use zisk_distributed_common::{CoordinatorMessageDto, JobId, WorkerId};
@@ -252,6 +252,9 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     type WorkerStreamStream =
         Pin<Box<dyn Stream<Item = Result<CoordinatorMessage, Status>> + Send>>;
 
+    type SubscribeToProofStream =
+        Pin<Box<dyn Stream<Item = Result<ProofStatusUpdate, Status>> + Send>>;
+
     /// Returns detailed coordinator status information.
     ///
     /// Admin-only endpoint that provides system metrics and operational status.
@@ -377,6 +380,37 @@ impl ZiskDistributedApi for CoordinatorGrpc {
         let result = self.coordinator.launch_proof(launch_proof_request_dto).await;
 
         result.map(|response_dto| Response::new(response_dto.into())).map_err(Status::from)
+    }
+
+    async fn subscribe_to_proof(
+        &self,
+        request: Request<SubscribeToProofRequest>,
+    ) -> Result<Response<Self::SubscribeToProofStream>, Status> {
+        self.validate_admin_request(&request)?;
+
+        let job_id = JobId::from(request.into_inner().job_id);
+        let coordinator = self.coordinator.clone();
+
+        let (tx, rx) = oneshot::channel::<ProofStatusUpdate>();
+
+        coordinator.subscribe_to_proof_completion(&job_id, tx).await.map_err(|e| match e {
+            CoordinatorError::NotFoundOrInaccessible => Status::not_found(format!(
+                "Job {} not found or already completed (proof data cleaned up)",
+                job_id
+            )),
+            _ => Status::internal(format!("Subscription failed: {}", e)),
+        })?;
+
+        info!("Client subscribed to job {}", job_id);
+
+        let output_stream = Box::pin(stream! {
+            match rx.await {
+                Ok(update) => yield Ok(update),
+                Err(_) => yield Err(Status::internal("Subscription closed unexpectedly")),
+            }
+        });
+
+        Ok(Response::new(output_stream))
     }
 
     /// Bidirectional streaming endpoint for worker communication.
