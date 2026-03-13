@@ -27,8 +27,22 @@ impl StatsCosts {
     pub fn get_delta_steps(&mut self, reference: &StatsCosts, current: &StatsCosts) -> u64 {
         current.steps - reference.steps - 1
     }
-    pub fn add_delta(&mut self, reference: &StatsCosts, current: &StatsCosts) -> u64 {
+    pub fn add_delta(
+        &mut self,
+        reference: &StatsCosts,
+        current: &StatsCosts,
+    ) -> Result<u64, String> {
         let delta_steps = current.steps - reference.steps - 1;
+
+        if self.steps >= reference.steps {
+            return Err(format!(
+                "COSTS OVERFLOW STEPS:{} + DELTA:{} => STEPS'{} (REF: {})",
+                self.steps,
+                delta_steps,
+                self.steps + delta_steps,
+                current.steps
+            ));
+        }
         self.steps += delta_steps;
         self.cost += current.cost - reference.cost;
         for i in 0..256 {
@@ -36,7 +50,7 @@ impl StatsCosts {
             self.frops_ops[i] += current.frops_ops[i] - reference.frops_ops[i];
         }
         self.mops.add_delta(&reference.mops, &current.mops);
-        delta_steps
+        Ok(delta_steps)
     }
     // steps, ops costs, precompiles costs, memory costs
     pub fn summary(&self) -> (u64, u64, u64, u64) {

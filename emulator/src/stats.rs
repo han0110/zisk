@@ -5,14 +5,13 @@
 //! * Registers read/write counters (total and per register)
 //! * Operations counters (total and per opcode)
 
+use sm_arith::ArithFrops;
+use sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
 use std::{
     collections::{BTreeMap, HashMap},
     fs::File,
-    io::{BufWriter, Write},
+    io::{BufWriter, IsTerminal, Write},
 };
-
-use sm_arith::ArithFrops;
-use sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
 use zisk_core::{
     zisk_ops::{OpStats, ZiskOp},
     ZiskInst, ZiskOperationType, ZiskRom, REGS_IN_MAIN_TOTAL_NUMBER, SRC_IMM, SRC_REG,
@@ -20,7 +19,7 @@ use zisk_core::{
 
 use crate::{
     get_ops_costs, get_ops_ranks, RegionsOfInterest, StatsCostMark, StatsCosts,
-    StatsCoverageReport, StatsReport, BASE_COST, MAIN_COST,
+    StatsCoverageReport, StatsReport, BASE_COST, MAIN_COST, NO_ROI_ID,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -84,6 +83,8 @@ pub struct Stats {
     top_rois_filter: bool,
     ram_size: u64,
     ram_used: u64,
+    disable_call_stack: bool,
+    use_colors: bool,
     #[cfg(feature = "debug_stats_trace")]
     debug_step_stack: Vec<u64>,
     #[cfg(feature = "debug_stats_trace")]
@@ -128,6 +129,8 @@ impl Default for Stats {
             top_rois_filter: false,
             ram_size: 0,
             ram_used: 0,
+            disable_call_stack: false,
+            use_colors: std::io::stdout().is_terminal(),
             #[cfg(feature = "debug_stats_trace")]
             debug_step_stack: Vec::new(),
             #[cfg(feature = "debug_stats_trace")]
@@ -165,18 +168,28 @@ impl Stats {
         assert_eq!(self.costs.steps, steps + 1);
     }
 
+    pub fn is_roi_in_call_stack(&self, roi: usize) -> bool {
+        self.call_stack
+            .iter()
+            .rev()
+            .skip(1)
+            .find(|entry| entry.called_roi_index.unwrap_or(NO_ROI_ID) == roi)
+            .is_some()
+    }
     pub fn print_call_stack(&self) {
         println!("CALL STACK DUMP (top to bottom):");
         for (i, entry) in self.call_stack.iter().rev().enumerate() {
-            let roi_name = if let Some(roi_index) = entry.called_roi_index {
-                &self.rois[roi_index].name
+            if let Some(roi_index) = entry.called_roi_index {
+                println!(
+                    "#{} PC:0x{:08X} RA:0x{:08X} ROI[{}]:{} STEPS:{}",
+                    i, entry.pc, entry.ra, roi_index, self.rois[roi_index].name, entry.costs.steps
+                );
             } else {
-                "????"
+                println!(
+                    "#{} PC:0x{:08X} RA:0x{:08X} ?????? STEPS:{}",
+                    i, entry.pc, entry.ra, entry.costs.steps
+                );
             };
-            println!(
-                "#{} PC:0x{:08X} RA:0x{:08X} ROI:{} STEPS:{}",
-                i, entry.pc, entry.ra, roi_name, entry.costs.steps
-            );
         }
     }
     pub fn static_print_call_stack(call_stack: &[CallStackEntry], prefix: &str) {
@@ -192,13 +205,42 @@ impl Stats {
             );
         }
     }
+    fn call_stack_error(&mut self, msg: &str) {
+        if self.use_colors {
+            println!("\x1B[1;31m{}\x1B[0m", msg);
+        } else {
+            println!("{}", msg);
+        }
+        self.disable_call_stack = true;
+    }
+
     pub fn check_roi(&mut self, pc: u32, regs: &[u64]) {
+        if self.disable_call_stack {
+            return;
+        }
+        #[cfg(feature = "debug_call_stack")]
+        let _previous_roi = self.previous_roi;
         self.previous_roi = self.current_roi;
 
         // First, handle RETURN even if we're not changing ROI
         let return_call = if self.is_return && !self.call_stack.is_empty() {
             #[cfg(feature = "debug_call_stack")]
-            println!("CALL_STACK_DEBUG: RETURN P_PC:0x{:08x} => PC:0x{pc:08x}", self.previous_pc);
+            {
+                let _proi = if let Some(proi) = _previous_roi {
+                    &format!("ROI[{proi}] RC:{}", self.rois[proi].call_stack_rc)
+                } else {
+                    "???"
+                };
+                let _croi = if let Some(croi) = self.current_roi {
+                    &format!("ROI[{croi}] RC:{}", self.rois[croi].call_stack_rc)
+                } else {
+                    "???"
+                };
+                println!(
+                    "CALL_STACK_DEBUG: RETURN P_PC:0x{:08x} {_proi} => PC:0x{pc:08x} {_croi}",
+                    self.previous_pc
+                );
+            }
             self.call_stack.pop()
         } else {
             None
@@ -244,7 +286,12 @@ impl Stats {
         if let Some(roi_index) = self.current_roi {
             let roi = &mut self.rois[roi_index];
             if pc >= roi.from_pc && pc <= roi.to_pc && !self.is_call && !self.is_return {
-                assert!(return_call.is_none());
+                if return_call.is_some() {
+                    self.call_stack_error(
+                        "ERROR: RETURN CALL unexpected, disabled call stack feature",
+                    );
+                }
+                // assert!(return_call.is_none());
                 return;
             }
         }
@@ -255,38 +302,41 @@ impl Stats {
             // If return after call, need to add delta costs
             if let Some(return_call) = return_call {
                 if return_call.caller_roi_index != Some(roi_index) {
-                    println!("**** STACK MISMATCH DETECTED ****\n");
-                    println!(
-                        "PC:[0x{pc:08x}] RA:[0x{:08x}] P_PC:[0x{:08x}]",
-                        regs[1], self.previous_pc
+                    self.call_stack_error(
+                        "ERROR: STACK MISMATCH DETECTED, disabled call stack feature",
                     );
-                    if let Some(caller_roi_index) = return_call.caller_roi_index {
-                        let _roi = &self.rois[caller_roi_index];
-                        println!("caller_roi_index (expected): {caller_roi_index} [0x{:08x}, 0x{:08x}] {}", _roi.from_pc, _roi.to_pc, _roi.name);
-                    } else {
-                        println!("caller_roi_index (expected): None !!");
-                    }
-                    let _roi = &self.rois[roi_index];
-                    println!(
-                        "caller_roi_index (current): {roi_index} [0x{:08x}, 0x{:08x}] {}",
-                        _roi.from_pc, _roi.to_pc, _roi.name
-                    );
-                    if let Some(called_roi_index) = return_call.called_roi_index {
-                        let _roi = &self.rois[called_roi_index];
-                        println!(
-                            "called_roi_index: {called_roi_index} [0x{:08x}, 0x{:08x}] {}",
-                            _roi.from_pc, _roi.to_pc, _roi.name
-                        );
-                    } else {
-                        println!("called_roi_index (expected): None !!");
-                    }
-                    println!("\n");
-                    Self::static_print_call_stack(&self.call_stack, "");
-                    panic!("CALL STACK EMU: STACK MISMATCH DETECTED on 0x{pc:08x}");
+                    return;
+                    // println!("**** STACK MISMATCH DETECTED ****\n");
+                    // println!(
+                    //     "PC:[0x{pc:08x}] RA:[0x{:08x}] P_PC:[0x{:08x}]",
+                    //     regs[1], self.previous_pc
+                    // );
+                    // if let Some(caller_roi_index) = return_call.caller_roi_index {
+                    //     let _roi = &self.rois[caller_roi_index];
+                    //     println!("caller_roi_index (expected): {caller_roi_index} [0x{:08x}, 0x{:08x}] {}", _roi.from_pc, _roi.to_pc, _roi.name);
+                    // } else {
+                    //     println!("caller_roi_index (expected): None !!");
+                    // }
+                    // let _roi = &self.rois[roi_index];
+                    // println!(
+                    //     "caller_roi_index (current): {roi_index} [0x{:08x}, 0x{:08x}] {}",
+                    //     _roi.from_pc, _roi.to_pc, _roi.name
+                    // );
+                    // if let Some(called_roi_index) = return_call.called_roi_index {
+                    //     let _roi = &self.rois[called_roi_index];
+                    //     println!(
+                    //         "called_roi_index: {called_roi_index} [0x{:08x}, 0x{:08x}] {}",
+                    //         _roi.from_pc, _roi.to_pc, _roi.name
+                    //     );
+                    // } else {
+                    //     println!("called_roi_index (expected): None !!");
+                    // }
+                    // println!("\n");
+                    // Self::static_print_call_stack(&self.call_stack, "");
+                    // panic!("CALL STACK EMU: STACK MISMATCH DETECTED on 0x{pc:08x}");
                 }
 
-                self.rois[roi_index].return_call(self.call_stack.len());
-
+                let last_caller_in_stack = self.rois[roi_index].return_call(self.call_stack.len());
                 // TODO: check tail call re-entry calls
                 // For all tail_call add costs from tail call to now
                 let mut processed = Vec::new();
@@ -295,7 +345,12 @@ impl Stats {
                         continue;
                     }
                     if Some(*roi_index) != self.current_roi {
-                        self.rois[*roi_index].add_delta_costs(tail_call, &self.costs);
+                        if let Err(msg) =
+                            self.rois[*roi_index].add_delta_costs(tail_call, &self.costs)
+                        {
+                            self.call_stack_error(&format!("ERROR: {msg} adding cost to self.rois[{roi_index}], disabled call stack feature"));
+                            return;
+                        }
                     }
                     processed.push(*roi_index);
                 }
@@ -308,27 +363,39 @@ impl Stats {
                         &return_call.costs,
                         &self.costs,
                     );
-                    self.rois[called_roi_index].add_delta_costs(&return_call.costs, &self.costs);
+                    if last_caller_in_stack || roi_index != called_roi_index {
+                        if let Err(msg) = self.rois[called_roi_index]
+                            .add_delta_costs(&return_call.costs, &self.costs)
+                        {
+                            self.call_stack_error(&format!("ERROR: {msg} adding cost to self.rois[{called_roi_index}], disabled call stack feature"));
+                            return;
+                        }
+                    }
                 }
-                let _steps = self.rois[roi_index].get_steps();
-                assert!(_steps <= self.costs.steps);
-
                 let roi_steps = self.rois[roi_index].get_steps();
                 if roi_steps > self.costs.steps {
-                    self.print_call_stack();
-                    panic!(
-                        "roi.costs.steps({}) > self.costs.steps({}) ref.steps: {} on #{}",
-                        roi_steps,
-                        self.costs.steps,
-                        return_call.costs.steps,
-                        self.call_stack.len()
-                    );
+                    self.call_stack_error("ERROR: COST OVERFLOW, disabled call stack feature");
+                    return;
+                    // self.print_call_stack();
+                    // panic!(
+                    //     "roi.costs.steps({}) > self.costs.steps({}) ref.steps: {} on #{}",
+                    //     roi_steps,
+                    //     self.costs.steps,
+                    //     return_call.costs.steps,
+                    //     self.call_stack.len()
+                    // );
                 }
             }
 
             if pc >= self.rois[roi_index].from_pc && pc <= self.rois[roi_index].to_pc {
                 if self.is_call {
-                    assert!(!self.is_return);
+                    if self.is_return {
+                        self.call_stack_error(
+                            "ERROR: Unexpected RETURN, disabled call stack feature",
+                        );
+                        return;
+                    }
+                    // assert!(!self.is_return);
                     let caller_name = if let Some(previous_roi_index) = previous_roi_index {
                         self.rois[previous_roi_index].caller_call();
                         &self.rois[previous_roi_index].name.clone()
@@ -395,13 +462,13 @@ impl Stats {
         // Create a new StatsCosts with the delta
         let mut delta_costs = StatsCosts::new();
         if self.individual_cost_marks {
-            delta_costs.add_delta(start_costs, &self.costs);
+            delta_costs.add_delta(start_costs, &self.costs).unwrap();
             mark.costs.push(delta_costs);
         } else {
             if mark.costs.is_empty() {
                 mark.costs.push(StatsCosts::new());
             }
-            mark.costs[0].add_delta(start_costs, &self.costs);
+            mark.costs[0].add_delta(start_costs, &self.costs).unwrap();
         }
         mark.count += 1;
         mark.start = None;
@@ -417,7 +484,7 @@ impl Stats {
 
         if let Some(start) = &mark.start {
             let mut delta_costs = StatsCosts::new();
-            delta_costs.add_delta(start, &self.costs);
+            delta_costs.add_delta(start, &self.costs).unwrap();
             mark.costs.push(delta_costs);
         } else {
             mark.costs.push(self.costs.clone());
@@ -772,10 +839,8 @@ impl Stats {
             );
         }
 
-        if !self.rois.is_empty() {
-            report.title_autowidth(
-                "TOP STEP FUNCTIONS (STEPS, % STEPS, CALLS, STEPS/CALL, FUNCTION)",
-            );
+        if !self.rois.is_empty() && !self.disable_call_stack {
+            report.title_autowidth("TOP STEP FUNCTIONS (STEPS, % STEPS, CALLS, FUNCTION)");
 
             let top_step_rois = self.get_top_rois(true);
             for (index, _) in top_step_rois.iter() {

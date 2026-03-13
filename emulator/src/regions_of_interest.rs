@@ -4,6 +4,7 @@ use std::io::{BufWriter, Write};
 
 use crate::{get_ops_costs, StatsCosts, MAIN_COST};
 
+pub const NO_ROI_ID: usize = 900_000_000;
 #[derive(Debug)]
 pub struct CallerInfo {
     pub calls: usize,
@@ -145,13 +146,14 @@ impl RegionsOfInterest {
                 .or_insert(CallerInfo { calls: 1, steps: 0 });
         }
     }
-    pub fn return_call(&mut self, call_stack_depth: usize) {
+    pub fn return_call(&mut self, call_stack_depth: usize) -> bool {
         let rc = self.call_stack_rc;
         if self.call_stack_rc > 0 {
             self.call_stack_rc -= 1;
         }
         self.update_call_depth(call_stack_depth);
         assert!(rc > self.call_stack_rc);
+        rc == 0
     }
     pub fn get_callers(&self) -> impl Iterator<Item = (&usize, &CallerInfo)> {
         self.callers.iter()
@@ -179,11 +181,15 @@ impl RegionsOfInterest {
     pub fn get_call_stack_depth(&self) -> Option<usize> {
         self.call_stack_depth
     }
-    pub fn add_delta_costs(&mut self, reference: &StatsCosts, current: &StatsCosts) -> u64 {
+    pub fn add_delta_costs(
+        &mut self,
+        reference: &StatsCosts,
+        current: &StatsCosts,
+    ) -> Result<u64, String> {
         if self.call_stack_rc == 0 {
             self.costs.add_delta(reference, current)
         } else {
-            self.costs.get_delta_steps(reference, current)
+            Ok(self.costs.get_delta_steps(reference, current))
         }
     }
     pub fn get_delta_steps(&mut self, reference: &StatsCosts, current: &StatsCosts) -> u64 {
