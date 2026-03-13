@@ -61,6 +61,7 @@ message LaunchProofRequest {
   HintsMode hints_mode = 6;
   optional string hints_uri = 7;
   optional uint32 simulated_node = 8; // If set, indicates this is a simulated worker
+  optional bytes input_data = 9;
 }
 
 enum InputMode {

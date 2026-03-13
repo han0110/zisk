@@ -65,12 +65,12 @@ pub struct SystemStatusDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InputsModeDto {
-    // No inputs are provided
+    /// No inputs are provided
     InputsNone,
     /// Inputs are provided as a complete payload referenced by a URI.
     InputsPath(String),
-    /// Inputs are provided directly as data.
-    InputsData(String),
+    /// Inputs are provided directly as data bytes.
+    InputsData(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

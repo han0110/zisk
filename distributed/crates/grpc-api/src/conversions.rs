@@ -154,10 +154,10 @@ impl From<SystemStatusDto> for SystemStatusResponse {
 
 impl From<LaunchProofRequestDto> for LaunchProofRequest {
     fn from(dto: LaunchProofRequestDto) -> Self {
-        let (inputs_mode, inputs_uri) = match dto.inputs_mode {
-            InputsModeDto::InputsNone => (InputMode::None, None),
-            InputsModeDto::InputsPath(inputs_path) => (InputMode::Path, Some(inputs_path)),
-            InputsModeDto::InputsData(inputs_uri) => (InputMode::Data, Some(inputs_uri)),
+        let (inputs_mode, inputs_uri, input_data) = match dto.inputs_mode {
+            InputsModeDto::InputsNone => (InputMode::None, None, None),
+            InputsModeDto::InputsPath(inputs_path) => (InputMode::Path, Some(inputs_path), None),
+            InputsModeDto::InputsData(bytes) => (InputMode::Data, None, Some(bytes)),
         };
 
         let (hints_mode, hints_uri) = match dto.hints_mode {
@@ -172,6 +172,7 @@ impl From<LaunchProofRequestDto> for LaunchProofRequest {
             minimal_compute_capacity: dto.minimal_compute_capacity,
             inputs_mode: inputs_mode.into(),
             inputs_uri,
+            input_data,
             hints_mode: hints_mode.into(),
             hints_uri,
             simulated_node: dto.simulated_node,
@@ -198,10 +199,10 @@ impl TryFrom<LaunchProofRequest> for LaunchProofRequestDto {
                     InputsModeDto::InputsPath(inputs_uri)
                 }
                 InputMode::Data => {
-                    let inputs_uri = req.inputs_uri.ok_or_else(|| {
-                        anyhow::anyhow!("Input mode is Data but inputs_uri is missing")
+                    let input_data = req.input_data.ok_or_else(|| {
+                        anyhow::anyhow!("Input mode is Data but input_data is missing")
                     })?;
-                    InputsModeDto::InputsData(inputs_uri)
+                    InputsModeDto::InputsData(input_data)
                 }
             },
             hints_mode: match HintsMode::try_from(req.hints_mode).unwrap_or(HintsMode::None) {
