@@ -57,6 +57,7 @@ gpu = ["proofman-common/gpu", "proofman/gpu", "packed"]
 packed = [
     "proofman/packed",
     "proofman-common/packed",
+    "precomp-blake2/packed",
     "precomp-keccakf/packed",
     "precomp-sha256f/packed",
     "precomp-poseidon2/packed",
