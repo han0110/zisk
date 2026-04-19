@@ -7,7 +7,7 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
-build = "build.rs"
+build = false
 
 # Disable all tests for this crate
 [lib]
