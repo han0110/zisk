@@ -63,7 +63,7 @@ pub struct SystemStatusDto {
     pub active_jobs: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum InputsModeDto {
     /// No inputs are provided
     InputsNone,
@@ -71,6 +71,24 @@ pub enum InputsModeDto {
     InputsPath(String),
     /// Inputs are provided directly as data bytes.
     InputsData(Vec<u8>),
+}
+
+impl std::fmt::Debug for InputsModeDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InputsNone => f.debug_tuple("InputsNone").finish(),
+            Self::InputsPath(path) => f.debug_tuple("InputsPath").field(path).finish(),
+            Self::InputsData(data) => {
+                struct Len(usize);
+                impl std::fmt::Debug for Len {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(f, "len = {}", self.0)
+                    }
+                }
+                f.debug_tuple("InputsData").field(&Len(data.len())).finish()
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
