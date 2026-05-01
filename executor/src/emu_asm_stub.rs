@@ -51,6 +51,10 @@ impl EmulatorAsm {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
+    pub fn clear_asm_resources(&self) -> Result<()> {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
     pub fn get_chunk_size(&self) -> u64 {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }

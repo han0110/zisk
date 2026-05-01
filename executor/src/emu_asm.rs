@@ -60,6 +60,15 @@ impl EmulatorAsm {
         Ok(())
     }
 
+    /// Drop the held `Arc<AsmResources>` so it can be released once all other refs are gone.
+    pub fn clear_asm_resources(&self) -> Result<()> {
+        *self
+            .asm_resources
+            .write()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))? = None;
+        Ok(())
+    }
+
     /// Resets the hints stream pipeline and the input shmem writer for the next job.
     pub fn reset(&self) -> Result<()> {
         if let Some(resources) = self

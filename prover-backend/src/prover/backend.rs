@@ -55,6 +55,14 @@ impl ProverBackend {
         self.executor.set_asm_resources(resources)
     }
 
+    /// Drop the executor's reference to the active `Arc<AsmResources>`, if any.
+    pub(crate) fn clear_asm_resources(&self) -> Result<()> {
+        if let Some(asm) = self.asm_emulator() {
+            asm.clear_asm_resources()?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
         let message: StreamMessage = borsh::from_slice(&bytes[1..])
             .map_err(|e| anyhow::anyhow!("Failed to deserialize hint StreamMessage: {}", e))?;

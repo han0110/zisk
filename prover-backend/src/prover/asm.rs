@@ -112,6 +112,18 @@ impl AsmProver {
         })
     }
 
+    /// Clear the program cache and the executor's `Arc<AsmResources>` reference, stopping
+    /// the ASM microservices and releasing their `/dev/shm` segments so the next `setup`
+    /// can spawn a fresh service set.
+    pub fn clear_program(&self) -> Result<()> {
+        self.core_prover.backend.clear_asm_resources()?;
+        self.program_cache
+            .write()
+            .map_err(|e| anyhow::anyhow!("program_cache lock poisoned: {e}"))?
+            .clear();
+        Ok(())
+    }
+
     fn get_asm_cache_paths(
         elf: &GuestProgram,
         with_hints: bool,
