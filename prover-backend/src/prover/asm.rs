@@ -124,6 +124,20 @@ impl AsmProver {
         Ok(())
     }
 
+    /// Compute the program verification key without generating assembly files or starting ASM services.
+    pub fn program_vk(&self, elf: &GuestProgram, with_hints: bool) -> Result<ProgramVK> {
+        if let Some(entry) = self
+            .program_cache
+            .read()
+            .unwrap()
+            .get(&SetupKey::new(&*elf.program_id.hash_id, with_hints))
+        {
+            return Ok(entry.program_vk.clone());
+        }
+        let pctx = self.core_prover.backend.get_pctx()?;
+        ensure_program_vk(&pctx, elf)
+    }
+
     fn get_asm_cache_paths(
         elf: &GuestProgram,
         with_hints: bool,
