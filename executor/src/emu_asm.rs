@@ -242,8 +242,18 @@ impl EmulatorAsm {
             })
         });
 
-        let (min_traces, main_count, secn_count) =
-            self.run_mt_assembly(zisk_rom, sm_bundle, stats)?;
+        let mt_result = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
+
+        let (min_traces, main_count, secn_count) = match mt_result {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = handle_mo.join();
+                if let Some(handle_rh) = handle_rh {
+                    let _ = handle_rh.join();
+                }
+                return Err(e);
+            }
+        };
         // Store execute steps
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
 
