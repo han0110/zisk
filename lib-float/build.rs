@@ -22,9 +22,16 @@ fn main() {
     // different riscv64-unknown-elf-gcc would produce different bytes and break vk
     // reproducibility across hosts. Distinguish workspace dev vs cargo dep by checking whether
     // the manifest dir lives under cargo's git/registry caches.
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let is_consumer = manifest_dir.contains("/.cargo/git/checkouts/")
-        || manifest_dir.contains("/.cargo/registry/src/");
+    let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cargo_home = std::env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cargo")));
+    let is_consumer = cargo_home
+        .map(|cargo_home| {
+            manifest_path.starts_with(cargo_home.join("git").join("checkouts"))
+                || manifest_path.starts_with(cargo_home.join("registry").join("src"))
+        })
+        .unwrap_or_default();
 
     if is_consumer {
         if !lib_file.exists() || !elf_file.exists() {
