@@ -1,3 +1,5 @@
+#![no_std]
+
 mod lib_c;
 
 pub use lib_c::*;

@@ -395,22 +395,21 @@ pub mod ziskos {
             }
         }
     }
-    use core::sync::atomic::{AtomicBool, Ordering};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
-    use spin::Mutex;
 
-    static RNG: Mutex<Option<SmallRng>> = Mutex::new(None);
-    static SYS_RAND_WARNING: AtomicBool = AtomicBool::new(false);
+    static mut RNG: Option<SmallRng> = None;
+    static mut SYS_RAND_WARNED: bool = false;
 
+    #[allow(static_mut_refs)]
     #[no_mangle]
     unsafe extern "C" fn sys_rand(recv_buf: *mut u8, words: usize) {
-        if !SYS_RAND_WARNING.swap(true, Ordering::Relaxed) {
+        if !SYS_RAND_WARNED {
+            SYS_RAND_WARNED = true;
             let msg = b"WARNING: Using insecure random number generator.\n";
             sys_write(1, msg.as_ptr(), msg.len());
         }
-        let mut rng_guard = RNG.lock();
-        let rng = rng_guard.get_or_insert_with(|| SmallRng::seed_from_u64(0x123456789abcdef0));
+        let rng = RNG.get_or_insert_with(|| SmallRng::seed_from_u64(0x123456789abcdef0));
         for i in 0..words {
             let element = recv_buf.add(i);
             *element = rng.gen();
