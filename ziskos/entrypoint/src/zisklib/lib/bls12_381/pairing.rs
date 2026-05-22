@@ -12,11 +12,13 @@ use super::{
         neg_bls12_381,
     },
     final_exp::final_exp_bls12_381,
+    fp12::mul_fp12_bls12_381,
     miller_loop::{miller_loop_batch_bls12_381, miller_loop_bls12_381},
     twist::{
         g2_bytes_be_to_u64_le_bls12_381, is_on_curve_twist_bls12_381,
         is_on_subgroup_twist_bls12_381,
     },
+    PAIRING_BATCH_BLS12,
 };
 
 /// Pairing check result codes
@@ -69,60 +71,95 @@ pub fn pairing_bls12_381(
 /// and multiplies the results together:
 ///     e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) ∈ GT
 ///
-/// Assumes all points are non-infinity and already validated (on curve and in subgroup).
+/// Each iterator item is a pre-validated pair or a propagated error code; the first `Err` item
+/// short-circuits the computation.
 pub fn pairing_batch_bls12_381(
-    g1_points: &[[u64; 12]],
-    g2_points: &[[u64; 24]],
+    pairs: impl Iterator<Item = Result<([u64; 12], [u64; 24]), u8>>,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 72] {
-    // Since each e(Pi, Qi) := FinalExp(MillerLoop(Pi, Qi))
-    // We have:
-    //  e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) = FinalExp(MillerLoop(P₁, Q₁) · MillerLoop(P₂, Q₂) · ... · MillerLoop(Pₙ, Qₙ))
-    // We can compute the Miller loop for each pair, multiplying the results together
-    // and then just do the final exponentiation once at the end.
+) -> Result<[u64; 72], u8> {
+    let mut g1_arr = [[0u64; 12]; PAIRING_BATCH_BLS12];
+    let mut g2_arr = [[0u64; 24]; PAIRING_BATCH_BLS12];
+    let mut batch_len: usize = 0;
 
-    let n = g1_points.len();
-    assert_eq!(n, g2_points.len(), "Number of G1 and G2 points must be equal");
+    let mut f: Option<[u64; 72]> = None;
 
-    if n == 0 {
+    for item in pairs {
+        let (g1, g2) = item?;
+        g1_arr[batch_len] = g1;
+        g2_arr[batch_len] = g2;
+        batch_len += 1;
+
+        if batch_len == PAIRING_BATCH_BLS12 {
+            let batch_f = miller_loop_batch_bls12_381(
+                &g1_arr,
+                &g2_arr,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            f = Some(match f {
+                Some(f) => mul_fp12_bls12_381(
+                    &f,
+                    &batch_f,
+                    #[cfg(feature = "hints")]
+                    hints,
+                ),
+                None => batch_f,
+            });
+            batch_len = 0;
+        }
+    }
+
+    if batch_len > 0 {
+        let batch_f = miller_loop_batch_bls12_381(
+            &g1_arr[..batch_len],
+            &g2_arr[..batch_len],
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        f = Some(match f {
+            Some(f) => mul_fp12_bls12_381(
+                &f,
+                &batch_f,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            None => batch_f,
+        });
+    }
+
+    let Some(f) = f else {
         // Empty input returns 1
         let mut one = [0; 72];
         one[0] = 1;
-        return one;
-    }
+        return Ok(one);
+    };
 
-    let miller_loop = miller_loop_batch_bls12_381(
-        g1_points,
-        g2_points,
+    Ok(final_exp_bls12_381(
+        &f,
         #[cfg(feature = "hints")]
         hints,
-    );
-
-    final_exp_bls12_381(
-        &miller_loop,
-        #[cfg(feature = "hints")]
-        hints,
-    )
+    ))
 }
 
-/// Pairing check with validation
+/// BLS12-381 single-pair validation for the pairing check.
+///
+/// Validates that the points have canonical field elements, are on curve, and in subgroup.
+///
+/// # Returns
+/// * `Ok(true)` - Pair is well-formed and should be included in the pairing product
+/// * `Ok(false)` - Either point is the identity; the pair contributes 1 and can be skipped
+/// * `Err(code)` - One of the [PAIRING_CHECK_ERR_*] validation error codes
 pub fn pairing_check_bls12_381(
-    g1_points: &[[u64; 12]],
-    g2_points: &[[u64; 24]],
+    g1: &[u64; 12],
+    g2: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Result<bool, u8> {
-    assert_eq!(g1_points.len(), g2_points.len(), "Number of G1 and G2 points must be equal");
-
-    // Collect valid pairs
-    let mut valid_g1: Vec<[u64; 12]> = Vec::with_capacity(g1_points.len());
-    let mut valid_g2: Vec<[u64; 24]> = Vec::with_capacity(g2_points.len());
-    for (g1, g2) in g1_points.iter().zip(g2_points.iter()) {
         let g1_is_inf = eq(g1, &G1_IDENTITY);
         let g2_is_inf = eq(g2, &G2_IDENTITY);
 
         if g1_is_inf && g2_is_inf {
             // If p = 𝒪 and q = 𝒪 => e(𝒪, 𝒪) = 1; we can skip
-            continue;
+            return Ok(false);
         }
 
         // If q = 𝒪 => MillerLoop(P, 𝒪) = 1; we can skip
@@ -147,7 +184,7 @@ pub fn pairing_check_bls12_381(
             ) {
                 return Err(PAIRING_CHECK_ERR_G1_NOT_IN_SUBGROUP);
             }
-            continue;
+            return Ok(false);
         }
 
         // If p = 𝒪 => MillerLoop(𝒪, Q) = 1; we can skip
@@ -174,7 +211,7 @@ pub fn pairing_check_bls12_381(
             ) {
                 return Err(PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP);
             }
-            continue;
+            return Ok(false);
         }
 
         // Both points are non-identity, validate both
@@ -220,22 +257,7 @@ pub fn pairing_check_bls12_381(
             return Err(PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP);
         }
 
-        valid_g1.push(*g1);
-        valid_g2.push(*g2);
-    }
-
-    // If all pairs were skipped, result is 1
-    if valid_g1.is_empty() {
-        return Ok(true);
-    }
-
-    // Compute batch pairing and check if result is 1
-    Ok(is_one(&pairing_batch_bls12_381(
-        &valid_g1,
-        &valid_g2,
-        #[cfg(feature = "hints")]
-        hints,
-    )))
+    Ok(true)
 }
 
 /// BLS12-381 pairing check for big-endian byte format.
@@ -264,27 +286,21 @@ pub(crate) unsafe fn bls12_381_pairing_check_c(
     num_pairs: usize,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
-    // Parse all pairs
-    let mut g1_points: Vec<[u64; 12]> = Vec::with_capacity(num_pairs);
-    let mut g2_points: Vec<[u64; 24]> = Vec::with_capacity(num_pairs);
-    for i in 0..num_pairs {
+    let pairs = (0..num_pairs).filter_map(|i| unsafe {
         let pair_ptr = pairs.add(i * 288);
-
         let g1_bytes: &[u8; 96] = &*(pair_ptr as *const [u8; 96]);
         let g2_bytes: &[u8; 192] = &*(pair_ptr.add(96) as *const [u8; 192]);
-
-        g1_points.push(g1_bytes_be_to_u64_le_bls12_381(g1_bytes));
-        g2_points.push(g2_bytes_be_to_u64_le_bls12_381(g2_bytes));
-    }
-
-    match pairing_check_bls12_381(
-        &g1_points,
-        &g2_points,
-        #[cfg(feature = "hints")]
-        hints,
-    ) {
-        Ok(true) => PAIRING_CHECK_SUCCESS,
-        Ok(false) => PAIRING_CHECK_FAILED,
-        Err(code) => code,
+        let g1 = g1_bytes_be_to_u64_le_bls12_381(g1_bytes);
+        let g2 = g2_bytes_be_to_u64_le_bls12_381(g2_bytes);
+        match pairing_check_bls12_381(&g1, &g2) {
+            Ok(true) => Some(Ok((g1, g2))),
+            Ok(false) => None,
+            Err(c) => Some(Err(c)),
+        }
+    });
+    match pairing_batch_bls12_381(pairs) {
+        Ok(result) if is_one(&result) => PAIRING_CHECK_SUCCESS,
+        Ok(_) => PAIRING_CHECK_FAILED,
+        Err(c) => c,
     }
 }

@@ -172,6 +172,7 @@ pub fn mul_long(
 /// - `len(modulus) > 0`
 /// - `modulus > 0`
 /// - `modulus` has no leading zeros
+/// - `out.len() >= len(modulus)`
 ///
 /// # Returns
 /// The remainder: `(a · b) mod modulus`
@@ -179,9 +180,10 @@ pub fn mul_and_reduce_long(
     a: &[U256],
     b: &[U256],
     modulus: &[U256],
-    scratch: &mut LongScratch,
+    scratch: &mut LongScratch<'_>,
+    out: &mut [U256],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
+) -> usize {
     #[cfg(debug_assertions)]
     {
         let len_m = modulus.len();
@@ -193,7 +195,7 @@ pub fn mul_and_reduce_long(
         mul_short(
             a,
             &b[0],
-            &mut scratch.mul,
+            scratch.mul,
             #[cfg(feature = "hints")]
             hints,
         )
@@ -201,7 +203,7 @@ pub fn mul_and_reduce_long(
         mul_long(
             a,
             b,
-            &mut scratch.mul,
+            scratch.mul,
             #[cfg(feature = "hints")]
             hints,
         )
@@ -211,6 +213,7 @@ pub fn mul_and_reduce_long(
         &scratch.mul[..mul_len],
         modulus,
         &mut scratch.rem,
+        out,
         #[cfg(feature = "hints")]
         hints,
     )

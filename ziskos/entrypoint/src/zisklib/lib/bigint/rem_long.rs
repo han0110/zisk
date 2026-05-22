@@ -1,23 +1,24 @@
 use core::cmp::Ordering;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-use crate::alloc_extern::vec;
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(all(feature = "hints", not(all(target_os = "zkvm", target_vendor = "zisk"))))]
 use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::fcall_bigint_div;
 
 use super::{add_agtb, mul_long, RemLongScratch, U256};
 
-/// Computes the remainder of two large numbers (initial call)
+/// Computes the remainder of two large numbers (initial call), writing the result into `out`.
 ///
 /// # Assumptions
 /// - `len(a) > 0` and `len(b) > 0`
 /// - `a` and `b` have no leading zeros (unless `a` being zero)
 /// - `b > 0`
+/// - `out.len() >= max(len(a), len(b))`
+/// - `scratch.quo.len() >= len(a) * 4`, `scratch.rem.len() >= len(b) * 4`,
+///   `scratch.q_b.len() >= len(a) + 1`, `scratch.q_b_r.len() >= len(a) + 1`
 ///
 /// # Returns
-/// The remainder: a mod b
+/// The number of `U256` limbs written to `out` representing `a mod b`.
 ///
 /// # Note
 /// Use this for the first reduction when `a` can be arbitrarily large.
@@ -25,8 +26,10 @@ use super::{add_agtb, mul_long, RemLongScratch, U256};
 pub fn rem_long_init(
     a: &[U256],
     b: &[U256],
+    scratch: &mut RemLongScratch<'_>,
+    out: &mut [U256],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
+) -> usize {
     let len_a = a.len();
     let len_b = b.len();
     #[cfg(debug_assertions)]
@@ -42,9 +45,11 @@ pub fn rem_long_init(
     // Check if a = b, a < b or a > b
     let comp = U256::compare_slices(a, b);
     if comp == Ordering::Less {
-        return a.to_vec();
+        out[..len_a].copy_from_slice(a);
+        return len_a;
     } else if comp == Ordering::Equal {
-        return vec![U256::ZERO];
+        out[0] = U256::ZERO;
+        return 1;
     }
     // We can assume a > b from here on
 
@@ -52,86 +57,20 @@ pub fn rem_long_init(
     let a_flat = U256::slice_to_flat(a);
     let b_flat = U256::slice_to_flat(b);
 
-    // Hint the quotient and remainder
-    let mut quo_flat = vec![0u64; len_a * 4];
-    let mut rem_flat = vec![0u64; len_b * 4];
-    let (limbs_quo, limbs_rem) = fcall_bigint_div(
-        a_flat,
-        b_flat,
-        &mut quo_flat,
-        &mut rem_flat,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    let quo = U256::flat_to_slice(&quo_flat[..limbs_quo]);
-    let rem = U256::flat_to_slice(&rem_flat[..limbs_rem]);
-
-    // Verify the division
-    let mut q_b = vec![U256::ZERO; len_a + 1]; // The +1 is because mul_long and add_agtb are a general purpose functions
-    let mut q_b_r = vec![U256::ZERO; len_a + 1];
-    verify_division(
-        a,
-        b,
-        quo,
-        rem,
-        &mut q_b,
-        &mut q_b_r,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-
-    rem.to_vec()
-}
-
-/// Computes the remainder of two large numbers (with scratch)
-///
-/// # Assumptions
-/// - `len(a) > 0` and `len(b) > 0`
-/// - `a` and `b` have no leading zeros (unless `a` being zero)
-/// - `b > 0`
-///
-/// # Returns
-/// The remainder: a mod b
-///
-/// # Note
-/// Not optimal for `len(b) == 1`, use `rem_short` instead
-pub fn rem_long(
-    a: &[U256],
-    b: &[U256],
-    scratch: &mut RemLongScratch,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
-    #[cfg(debug_assertions)]
-    {
-        let len_a = a.len();
-        let len_b = b.len();
-        assert_ne!(len_a, 0, "Input 'a' must have at least one limb");
-        assert_ne!(len_b, 0, "Input 'b' must have at least one limb");
-        assert!(!b[len_b - 1].is_zero(), "Input 'b' must not have leading zeros");
-        if len_a > 1 {
-            assert!(!a[len_a - 1].is_zero(), "Input 'a' must not have leading zeros");
-        }
-    }
-
-    // Check if a = b, a < b or a > b
-    let comp = U256::compare_slices(a, b);
-    if comp == Ordering::Less {
-        return a.to_vec();
-    } else if comp == Ordering::Equal {
-        return vec![U256::ZERO];
-    }
-    // We can assume a > b from here on
-
-    // Strategy: Hint the division result and then verify it satisfies Euclid's division lemma
-    let a_flat = U256::slice_to_flat(a);
-    let b_flat = U256::slice_to_flat(b);
+    let quo_len_u64 = len_a * 4;
+    let rem_len_u64 = len_b * 4;
+    let q_b_cap = len_a + 1; // mul_long and add_agtb need this much
+    debug_assert!(scratch.quo.len() >= quo_len_u64);
+    debug_assert!(scratch.rem.len() >= rem_len_u64);
+    debug_assert!(scratch.q_b.len() >= q_b_cap);
+    debug_assert!(scratch.q_b_r.len() >= q_b_cap);
 
     // Hint the quotient and remainder
     let (limbs_quo, limbs_rem) = fcall_bigint_div(
         a_flat,
         b_flat,
-        &mut scratch.quo,
-        &mut scratch.rem,
+        &mut scratch.quo[..quo_len_u64],
+        &mut scratch.rem[..rem_len_u64],
         #[cfg(feature = "hints")]
         hints,
     );
@@ -144,13 +83,91 @@ pub fn rem_long(
         b,
         quo,
         rem,
-        &mut scratch.q_b,
-        &mut scratch.q_b_r,
+        &mut scratch.q_b[..q_b_cap],
+        &mut scratch.q_b_r[..q_b_cap],
         #[cfg(feature = "hints")]
         hints,
     );
 
-    rem.to_vec()
+    let rem_len = rem.len();
+    out[..rem_len].copy_from_slice(rem);
+    rem_len
+}
+
+/// Computes the remainder of two large numbers (with scratch), writing the result into `out`.
+///
+/// # Assumptions
+/// - `len(a) > 0` and `len(b) > 0`
+/// - `a` and `b` have no leading zeros (unless `a` being zero)
+/// - `b > 0`
+/// - `out.len() >= max(len(a), len(b))`
+///
+/// # Returns
+/// The number of `U256` limbs written to `out` representing `a mod b`.
+///
+/// # Note
+/// Not optimal for `len(b) == 1`, use `rem_short` instead
+pub fn rem_long(
+    a: &[U256],
+    b: &[U256],
+    scratch: &mut RemLongScratch<'_>,
+    out: &mut [U256],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> usize {
+    let len_a = a.len();
+    #[cfg(debug_assertions)]
+    {
+        let len_b = b.len();
+        assert_ne!(len_a, 0, "Input 'a' must have at least one limb");
+        assert_ne!(len_b, 0, "Input 'b' must have at least one limb");
+        assert!(!b[len_b - 1].is_zero(), "Input 'b' must not have leading zeros");
+        if len_a > 1 {
+            assert!(!a[len_a - 1].is_zero(), "Input 'a' must not have leading zeros");
+        }
+    }
+
+    // Check if a = b, a < b or a > b
+    let comp = U256::compare_slices(a, b);
+    if comp == Ordering::Less {
+        out[..len_a].copy_from_slice(a);
+        return len_a;
+    } else if comp == Ordering::Equal {
+        out[0] = U256::ZERO;
+        return 1;
+    }
+    // We can assume a > b from here on
+
+    // Strategy: Hint the division result and then verify it satisfies Euclid's division lemma
+    let a_flat = U256::slice_to_flat(a);
+    let b_flat = U256::slice_to_flat(b);
+
+    // Hint the quotient and remainder
+    let (limbs_quo, limbs_rem) = fcall_bigint_div(
+        a_flat,
+        b_flat,
+        scratch.quo,
+        scratch.rem,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let quo = U256::flat_to_slice(&scratch.quo[..limbs_quo]);
+    let rem = U256::flat_to_slice(&scratch.rem[..limbs_rem]);
+
+    // Verify the division
+    verify_division(
+        a,
+        b,
+        quo,
+        rem,
+        scratch.q_b,
+        scratch.q_b_r,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let rem_len = rem.len();
+    out[..rem_len].copy_from_slice(rem);
+    rem_len
 }
 
 /// Verify that a = q·b + r

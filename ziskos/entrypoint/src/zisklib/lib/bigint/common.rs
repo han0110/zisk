@@ -3,10 +3,17 @@ use core::{
     fmt::{self, Debug, Display},
 };
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-use crate::alloc_extern::vec;
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-use crate::alloc_extern::vec::Vec;
+/// Maximum modulus length (in U256 limbs) supported by the no-alloc modexp path.
+///
+/// A modulus of `MAX_MODEXP_LEN_M` limbs corresponds to a 1024-byte modulus, which covers EIP-2565
+/// realistic inputs with margin. Inputs exceeding this bound must be rejected by the caller.
+pub const MAX_MODEXP_LEN_M: usize = 32;
+
+/// Maximum number of exponent bits supported by the no-alloc modexp path.
+///
+/// Sized as `MAX_MODEXP_LEN_M * 4 * 64` to cover the worst-case bit decomposition of a maximally
+/// sized exponent (one bit per u64 entry, as produced by `fcall_bin_decomp`).
+pub const MAX_MODEXP_EXP_BITS: usize = MAX_MODEXP_LEN_M * 4 * 64;
 
 /// A 256-bit unsigned integer stored as four little-endian 64-bit limbs.
 #[repr(transparent)]
@@ -195,36 +202,58 @@ impl Default for ShortScratch {
 }
 
 /// Scratch space for the remainder step of long-divisor division verification.
-pub struct RemLongScratch {
-    pub quo: Vec<u64>,    // quotient
-    pub rem: Vec<u64>,    // remainder
-    pub q_b: Vec<U256>,   // q * b
-    pub q_b_r: Vec<U256>, // q * b + r
+///
+/// Each field borrows a caller-provided buffer:
+/// - `quo` (>= `2 * len_m * 4` u64s) — hinted quotient flat limbs
+/// - `rem` (>= `len_m * 4` u64s) — hinted remainder flat limbs
+/// - `q_b` (>= `2 * len_m` U256s) — intermediate `q * b`
+/// - `q_b_r` (>= `2 * len_m` U256s) — intermediate `q * b + r`
+pub struct RemLongScratch<'a> {
+    pub quo: &'a mut [u64],
+    pub rem: &'a mut [u64],
+    pub q_b: &'a mut [U256],
+    pub q_b_r: &'a mut [U256],
 }
 
-impl RemLongScratch {
-    pub fn new(len_m: usize) -> Self {
-        let max_quo = (2 * len_m) * 4;
-        let max_rem = len_m * 4;
-        let max_prod = 2 * len_m;
-        Self {
-            quo: vec![0u64; max_quo],
-            rem: vec![0u64; max_rem],
-            q_b: vec![U256::ZERO; max_prod],
-            q_b_r: vec![U256::ZERO; max_prod],
-        }
+impl<'a> RemLongScratch<'a> {
+    pub fn from_buffers(
+        quo: &'a mut [u64],
+        rem: &'a mut [u64],
+        q_b: &'a mut [U256],
+        q_b_r: &'a mut [U256],
+    ) -> Self {
+        Self { quo, rem, q_b, q_b_r }
     }
 }
 
-/// Combined scratch space for long-divisor division and multiplication verification.
-pub struct LongScratch {
-    pub rem: RemLongScratch, // for rem_long verification
-    pub mul: Vec<U256>,      // result of mul_long or square_long
+/// Combined scratch space for long-divisor multiplication-then-reduction (`mul_and_reduce_long`,
+/// `square_and_reduce_long`).
+///
+/// `mul` is the intermediate output buffer for `mul_long` / `square_long` (size >= `2 * len_m`).
+/// `rem` is the scratch consumed by `rem_long`.
+pub struct LongScratch<'a> {
+    pub rem: RemLongScratch<'a>,
+    pub mul: &'a mut [U256],
 }
 
-impl LongScratch {
-    pub fn new(len_m: usize) -> Self {
-        let max_mul = 2 * len_m;
-        Self { rem: RemLongScratch::new(len_m), mul: vec![U256::ZERO; max_mul] }
+impl<'a> LongScratch<'a> {
+    pub fn from_buffers(rem: RemLongScratch<'a>, mul: &'a mut [U256]) -> Self {
+        Self { rem, mul }
     }
+}
+
+/// Umbrella scratch for `modexp`.
+///
+/// Fields:
+/// - `long` — multiplication+reduction scratch (mul intermediate + RemLongScratch)
+/// - `bits` (>= `64 * exp_len` u64s) — destination for `fcall_bin_decomp`
+/// - `rec_exp` (>= `exp_len` u64s) — recomposed exponent for verification
+/// - `base_buf` (>= `len_m` U256s) — persistent reduced base across iterations
+/// - `tmp_buf` (>= `len_m` U256s) — second ping-pong buffer alongside the caller's `out`
+pub struct ModexpScratch<'a> {
+    pub long: LongScratch<'a>,
+    pub bits: &'a mut [u64],
+    pub rec_exp: &'a mut [u64],
+    pub base_buf: &'a mut [U256],
+    pub tmp_buf: &'a mut [U256],
 }

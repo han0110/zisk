@@ -22,7 +22,10 @@ mod square_short;
 
 pub use add_agtb::*;
 pub use add_short::*;
-pub use common::{LongScratch, RemLongScratch, ShortScratch, U256};
+pub use common::{
+    LongScratch, ModexpScratch, RemLongScratch, ShortScratch, MAX_MODEXP_EXP_BITS,
+    MAX_MODEXP_LEN_M, U256,
+};
 pub use div_long::*;
 pub use div_short::*;
 pub use modexp::*;

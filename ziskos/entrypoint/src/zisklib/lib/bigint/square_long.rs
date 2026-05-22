@@ -188,15 +188,17 @@ pub fn square_long(
 /// - `len(modulus) > 0`
 /// - `modulus > 0`
 /// - `modulus` has no leading zeros
+/// - `out.len() >= len(modulus)`
 ///
 /// # Returns
 /// The remainder: a² mod modulus
 pub fn square_and_reduce_long(
     a: &[U256],
     modulus: &[U256],
-    scratch: &mut LongScratch,
+    scratch: &mut LongScratch<'_>,
+    out: &mut [U256],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
+) -> usize {
     #[cfg(debug_assertions)]
     {
         let len_m = modulus.len();
@@ -206,7 +208,7 @@ pub fn square_and_reduce_long(
 
     let sq_len = square_long(
         a,
-        &mut scratch.mul,
+        scratch.mul,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -215,6 +217,7 @@ pub fn square_and_reduce_long(
         &scratch.mul[..sq_len],
         modulus,
         &mut scratch.rem,
+        out,
         #[cfg(feature = "hints")]
         hints,
     )

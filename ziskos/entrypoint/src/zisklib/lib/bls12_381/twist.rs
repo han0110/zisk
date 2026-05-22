@@ -861,24 +861,21 @@ pub fn scalar_mul_by_abs_x_twist_bls12_381(
 /// It computes k1·P1 + k2·P2 + ... + kn·Pn
 // TODO: This is a naive implementation, one can improve it by using, e.g., a windowed strategies!
 pub fn msm_complete_twist_bls12_381(
-    points: &[[u64; 24]],
-    scalars: &[[u64; 4]],
+    pairs: impl Iterator<Item = ([u64; 24], [u64; 4])>,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Result<[u64; 24], u8> {
-    debug_assert_eq!(points.len(), scalars.len());
-
     let mut acc = G2_IDENTITY;
     let mut acc_is_inf = true;
 
-    for (point, scalar) in points.iter().zip(scalars.iter()) {
+    for (point, scalar) in pairs {
         // Skip infinity points
-        if *point == G2_IDENTITY {
+        if point == G2_IDENTITY {
             continue;
         }
 
         // Reduce the scalar modulo the group order, and skip if the result is zero
         let scalar = reduce_fr_bls12_381(
-            scalar,
+            &scalar,
             #[cfg(feature = "hints")]
             hints,
         );
@@ -897,7 +894,7 @@ pub fn msm_complete_twist_bls12_381(
 
         // Verify point is on curve
         if !is_on_curve_twist_bls12_381(
-            point,
+            &point,
             #[cfg(feature = "hints")]
             hints,
         ) {
@@ -906,7 +903,7 @@ pub fn msm_complete_twist_bls12_381(
 
         // Verify point is in subgroup (required for MSM per EIP-2537)
         if !is_on_subgroup_twist_bls12_381(
-            point,
+            &point,
             #[cfg(feature = "hints")]
             hints,
         ) {
@@ -915,7 +912,7 @@ pub fn msm_complete_twist_bls12_381(
 
         // Compute P * k
         let product = scalar_mul_twist_bls12_381(
-            point,
+            &point,
             &scalar,
             #[cfg(feature = "hints")]
             hints,
@@ -1094,25 +1091,19 @@ pub(crate) unsafe fn bls12_381_g2_msm_c(
     let ret_bytes: &mut [u8; 192] = &mut *(ret as *mut [u8; 192]);
 
     // Parse all pairs
-    let mut points = Vec::with_capacity(num_pairs);
-    let mut scalars = Vec::with_capacity(num_pairs);
-    for i in 0..num_pairs {
+    let pairs = (0..num_pairs).map(|i| unsafe {
         let pair_ptr = pairs.add(i * 224);
         let point_bytes: &[u8; 192] = &*(pair_ptr as *const [u8; 192]);
         let scalar_bytes: &[u8; 32] = &*(pair_ptr.add(192) as *const [u8; 32]);
-
-        // Parse point and scalar
-        let point_u64 = g2_bytes_be_to_u64_le_bls12_381(point_bytes);
-        let scalar_u64 = scalar_bytes_be_to_u64_le_bls12_381(scalar_bytes);
-
-        points.push(point_u64);
-        scalars.push(scalar_u64);
-    }
+        (
+            g2_bytes_be_to_u64_le_bls12_381(point_bytes),
+            scalar_bytes_be_to_u64_le_bls12_381(scalar_bytes),
+        )
+    });
 
     // Perform MSM with validation
     let result = match msm_complete_twist_bls12_381(
-        &points,
-        &scalars,
+        pairs,
         #[cfg(feature = "hints")]
         hints,
     ) {

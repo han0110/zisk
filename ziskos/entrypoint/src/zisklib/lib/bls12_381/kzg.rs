@@ -143,12 +143,14 @@ pub fn verify_kzg_proof(
     let g2_points = [neg_g2, t_minus_z];
 
     // Check if the pairing result equals 1
-    is_one(&pairing_batch_bls12_381(
-        &g1_points,
-        &g2_points,
-        #[cfg(feature = "hints")]
-        hints,
-    ))
+    is_one(&unsafe {
+        pairing_batch_bls12_381(
+            g1_points.into_iter().zip(g2_points).map(Ok),
+            #[cfg(feature = "hints")]
+            hints,
+        )
+        .unwrap_unchecked()
+    })
 }
 
 /// Verify KZG proof using BLS12-381 implementation.

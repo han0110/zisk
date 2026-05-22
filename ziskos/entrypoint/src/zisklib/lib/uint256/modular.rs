@@ -118,8 +118,10 @@ pub fn pow_mod256(
     // We can assume exp,base > 1 from now on
 
     // Hint the binary decomposition of the exponent (MSB first)
-    let (len, bits) = fcall_bin_decomp(
+    let mut bits = [0u64; 256];
+    let len = fcall_bin_decomp(
         exp,
+        &mut bits,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -137,7 +139,7 @@ pub fn pow_mod256(
     let mut rec_exp = [0u64; 4];
     let bit_pos = len - 1;
     rec_exp[bit_pos / 64] = 1u64 << (bit_pos % 64);
-    for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
+    for (bit_idx, &bit) in bits[..len].iter().enumerate().skip(1) {
         if is_zero(&result) {
             return ZERO;
         }

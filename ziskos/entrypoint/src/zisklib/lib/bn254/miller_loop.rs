@@ -259,9 +259,10 @@ pub fn miller_loop_batch_bn254(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 48] {
     // Before the loop starts, compute xp' = -xp/yp and yp' = 1/yp for each point p
-    let mut xp_primes: Vec<[u64; 4]> = Vec::with_capacity(g1_points.len());
-    let mut yp_primes: Vec<[u64; 4]> = Vec::with_capacity(g1_points.len());
-    for p in g1_points.iter() {
+    let n = g1_points.len();
+    let mut xp_primes = [[0u64; 4]; super::PAIRING_BATCH_BN254];
+    let mut yp_primes = [[0u64; 4]; super::PAIRING_BATCH_BN254];
+    for (i, p) in g1_points.iter().enumerate() {
         let mut xp_prime: [u64; 4] = p[0..4].try_into().unwrap();
         let mut yp_prime: [u64; 4] = p[4..8].try_into().unwrap();
         yp_prime = inv_fp_bn254(
@@ -281,12 +282,13 @@ pub fn miller_loop_batch_bn254(
             hints,
         );
 
-        xp_primes.push(xp_prime);
-        yp_primes.push(yp_prime);
+        xp_primes[i] = xp_prime;
+        yp_primes[i] = yp_prime;
     }
 
     // Initialize the Miller loop with r_i = q_i and f = 1
-    let mut r: Vec<[u64; 16]> = g2_points.iter().map(|q| q[0..16].try_into().unwrap()).collect();
+    let mut r = [[0u64; 16]; super::PAIRING_BATCH_BN254];
+    (0..n).for_each(|i| r[i] = g2_points[i][0..16].try_into().unwrap());
     let mut f = [0u64; 48];
     f[0] = 1;
     let n = g1_points.len();

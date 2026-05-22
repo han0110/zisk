@@ -1,13 +1,14 @@
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-use crate::alloc_extern::vec;
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(all(feature = "hints", not(all(target_os = "zkvm", target_vendor = "zisk"))))]
 use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::fcall_bigint_div;
 
-use super::{add_short, mul_short, ShortScratch, U256};
+use super::{add_short, mul_short, RemLongScratch, ShortScratch, U256};
 
 /// Computes the remainder of a large number divided by a short number (initial call)
+///
+/// Uses a `RemLongScratch` because the quotient buffer must be sized to `len(a) * 4` u64s, which is
+/// larger than what the fixed-size `ShortScratch` provides.
 ///
 /// # Assumptions
 /// - `len(a) > 0`
@@ -23,6 +24,7 @@ use super::{add_short, mul_short, ShortScratch, U256};
 pub fn rem_short_init(
     a: &[U256],
     b: &U256,
+    scratch: &mut RemLongScratch<'_>,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> U256 {
     let len_a = a.len();
@@ -49,30 +51,34 @@ pub fn rem_short_init(
     // Strategy: Hint the division result and then verify it satisfies Euclid's division lemma
     let a_flat = U256::slice_to_flat(a);
 
+    let quo_len_u64 = len_a * 4;
+    let q_b_cap = len_a + 1;
+    debug_assert!(scratch.quo.len() >= quo_len_u64);
+    debug_assert!(scratch.rem.len() >= 4);
+    debug_assert!(scratch.q_b.len() >= q_b_cap);
+    debug_assert!(scratch.q_b_r.len() >= q_b_cap);
+
     // Hint the quotient and remainder
-    let mut quo_flat = vec![0u64; len_a * 4];
-    let mut rem_flat = [0u64; 4];
     let (limbs_quo, _) = fcall_bigint_div(
         a_flat,
         b.as_limbs(),
-        &mut quo_flat,
-        &mut rem_flat,
+        &mut scratch.quo[..quo_len_u64],
+        &mut scratch.rem[..4],
         #[cfg(feature = "hints")]
         hints,
     );
-    let quo = U256::flat_to_slice(&quo_flat[..limbs_quo]);
-    let rem = U256::from_u64s(&rem_flat);
+    let quo = U256::flat_to_slice(&scratch.quo[..limbs_quo]);
+    let rem_limbs: [u64; 4] = [scratch.rem[0], scratch.rem[1], scratch.rem[2], scratch.rem[3]];
+    let rem = U256::from_u64s(&rem_limbs);
 
     // Verify the division
-    let mut q_b = vec![U256::ZERO; len_a + 1]; // The +1 is because mul_long and add_agtb are a general purpose functions
-    let mut q_b_r = vec![U256::ZERO; len_a + 1];
     verify_division(
         a,
         b,
         quo,
         &rem,
-        &mut q_b,
-        &mut q_b_r,
+        &mut scratch.q_b[..q_b_cap],
+        &mut scratch.q_b_r[..q_b_cap],
         #[cfg(feature = "hints")]
         hints,
     );

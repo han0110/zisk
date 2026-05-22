@@ -17,6 +17,13 @@
 //! - [`cyclotomic`] — Cyclotomic subgroup arithmetic.
 //! - [`pairing`] — Optimal Ate pairing and batch pairing check.
 
+/// Static batch size for the Miller-loop scratch. `bn254_pairing_check_c` chunks an arbitrary
+/// number of input pairs into groups of this size, calling `miller_loop_batch_bn254` on each
+/// and multiplying the per-chunk fp12 results into a single accumulator before one final exp.
+///
+/// Each unit adds 384 B of stack scratch (g1 64 + g2 128 + xp' 32 + yp' 32 + r 128).
+pub(crate) const PAIRING_BATCH_BN254: usize = 8;
+
 mod constants;
 mod curve;
 mod cyclotomic;

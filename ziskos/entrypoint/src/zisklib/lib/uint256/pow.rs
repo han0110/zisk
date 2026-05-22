@@ -80,8 +80,10 @@ pub fn overflowing_pow256(
     }
 
     // Hint the binary decomposition of the exponent (MSB first)
-    let (len, bits) = fcall_bin_decomp(
+    let mut bits = [0u64; 256];
+    let len = fcall_bin_decomp(
         exp,
+        &mut bits,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -95,7 +97,7 @@ pub fn overflowing_pow256(
     let mut rec_exp = [0u64; 4];
     let bit_pos = len - 1;
     rec_exp[bit_pos / 64] = 1u64 << (bit_pos % 64);
-    for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
+    for (bit_idx, &bit) in bits[..len].iter().enumerate().skip(1) {
         // Compute result = result² (mod 2^256)
         let (res, sq_overflow) = overflowing_square256(
             &result,
@@ -179,8 +181,10 @@ pub fn wrapping_pow256(
     }
 
     // Hint the binary decomposition of the exponent (MSB first)
-    let (len, bits) = fcall_bin_decomp(
+    let mut bits = [0u64; 256];
+    let len = fcall_bin_decomp(
         exp,
+        &mut bits,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -193,7 +197,7 @@ pub fn wrapping_pow256(
     let mut rec_exp = [0u64; 4];
     let bit_pos = len - 1;
     rec_exp[bit_pos / 64] = 1u64 << (bit_pos % 64);
-    for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
+    for (bit_idx, &bit) in bits[..len].iter().enumerate().skip(1) {
         // Compute result = result² (mod 2^256)
         result = wrapping_square256(
             &result,
