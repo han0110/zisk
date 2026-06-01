@@ -211,6 +211,13 @@ impl Coordinator {
             if first_setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
         let worker_id = req.worker_id.clone();
+
+        // A `Register` (not `Reconnect`) means a fresh process that owes no recovery, so any
+        // leftover `pending_recovery` entry is stale and must be cleared.
+        if self.pending_recovery.write().await.remove(&worker_id) {
+            info!("[Recovery] Worker {} re-registered", worker_id);
+        }
+
         match self
             .workers_pool
             .register_worker(req.worker_id, req.compute_capacity, msg_sender, initial_state)
