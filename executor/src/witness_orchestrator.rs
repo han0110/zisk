@@ -169,7 +169,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
             pctx,
             state,
             main_instance,
-            buffer_pool.take_buffer(),
+            buffer_pool.take_buffer()?,
             stats_scope.id(),
         )
     }
@@ -231,7 +231,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
             true => std::mem::take(
                 &mut *self.trace_buffer_rom.lock().map_err(|e| anyhow::anyhow!("{e}"))?,
             ),
-            false => buffer_pool.take_buffer(),
+            false => buffer_pool.take_buffer()?,
         };
 
         self.witness_generator.compute_secn_witness(
