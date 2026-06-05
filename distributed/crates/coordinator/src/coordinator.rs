@@ -810,13 +810,16 @@ impl Coordinator {
         self.fail_job_with_recovery(job_id, reason, None).await
     }
 
-    /// Like `fail_job` but parks `recovering_worker` `SettingUp` until it
-    /// emits `WorkerRecoveryComplete`, instead of flipping it `Ready` directly.
+    /// Like `fail_job` but parks every `Computing` worker on the job `SettingUp`
+    /// until each emits `WorkerRecoveryComplete`, instead of flipping them
+    /// `Ready` directly. The `recovering_worker` hint is retained for call-site
+    /// compatibility but no longer special-cased, since all cancelled workers
+    /// are now drained uniformly.
     pub async fn fail_job_with_recovery(
         &self,
         job_id: &JobId,
         reason: impl AsRef<str>,
-        recovering_worker: Option<&WorkerId>,
+        _recovering_worker: Option<&WorkerId>,
     ) -> CoordinatorResult<()> {
         let jobs_map = self.jobs.read().await;
         let job_entry =
@@ -836,16 +839,21 @@ impl Coordinator {
             // job write lock released here
         };
 
-        // Same ordering rule as `cancel_job`: insert `pending_recovery` and
-        // park `recovering_worker` BEFORE sending JobCancelled, otherwise an
-        // immediate `WorkerRecoveryComplete` from the worker can race ahead
-        // of the parking and be dropped.
-        match recovering_worker {
-            Some(rec) => {
-                self.pending_recovery.write().await.insert(rec.clone());
-                self.ensure_workers_ready_except(&worker_ids, rec).await;
+        // Park EVERY computing worker on the job `SettingUp` + `pending_recovery`
+        // before sending `JobCancelled`, exactly as `cancel_job` does. A worker
+        // that received `JobCancelled` keeps unwinding its detached proof, still
+        // holding GPU and host memory, after acking the cancellation. Flipping any
+        // of them `Ready` here would let the next job dispatch onto a worker that
+        // is still mid-unwind and run out of memory. Each worker is flipped `Ready`
+        // only once it emits `WorkerRecoveryComplete`, that is once its prover has
+        // actually drained. Parking happens before the send so that an immediate
+        // completion cannot race ahead of the parking and be dropped.
+        let parked = self.workers_pool.mark_computing_workers_settingup(&worker_ids).await;
+        if !parked.is_empty() {
+            let mut pending = self.pending_recovery.write().await;
+            for wid in &parked {
+                pending.insert(wid.clone());
             }
-            None => self.ensure_workers_ready(&worker_ids).await,
         }
         self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
 
@@ -1331,16 +1339,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_ensure_workers_ready_all_workers() {
+    async fn test_fail_job_parks_all_workers_for_recovery() {
         let (coordinator, workers, job_id) =
             setup_coordinator_with_job(3, JobPhase::Contributions, |_| {}).await;
 
-        // Only worker 0 has "results" — but ensure_workers_ready should mark ALL 3 as Ready
+        // Every computing worker must be parked SettingUp + pending_recovery,
+        // not flipped Ready, so the next job cannot dispatch onto a worker whose
+        // cancelled proof is still unwinding (OOM otherwise).
         coordinator.fail_job(&job_id, "test").await.unwrap();
 
         for (wid, _) in &workers {
             let state = coordinator.workers_pool.worker_state(wid).await;
-            assert_eq!(state, Some(WorkerState::Ready), "Worker {} should be Ready", wid);
+            assert_eq!(state, Some(WorkerState::SettingUp), "Worker {} should be SettingUp", wid);
+            assert!(
+                coordinator.pending_recovery.read().await.contains(wid),
+                "Worker {} must be in pending_recovery after fail_job",
+                wid
+            );
         }
     }
 

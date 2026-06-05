@@ -206,10 +206,12 @@ async fn test_worker_disconnect_aborts_and_cancels() {
 
     assert_job_state(&s.coordinator, &s.job_id, JobState::Failed).await;
 
-    // Worker 0 is Disconnected, workers 1+2 should be Idle
+    // Worker 0 is Disconnected; the surviving peers are parked SettingUp until
+    // they confirm their cancelled proofs drained (WorkerRecoveryComplete),
+    // rather than being flipped Ready while still unwinding.
     assert_worker_state(&s.coordinator, w0_id, WorkerState::Disconnected).await;
-    assert_worker_state(&s.coordinator, &s.workers[1].0, WorkerState::Ready).await;
-    assert_worker_state(&s.coordinator, &s.workers[2].0, WorkerState::Ready).await;
+    assert_worker_state(&s.coordinator, &s.workers[1].0, WorkerState::SettingUp).await;
+    assert_worker_state(&s.coordinator, &s.workers[2].0, WorkerState::SettingUp).await;
 
     // Workers 1+2 should have received cancellation messages
     assert!(get_cancellation_count(&s.workers[1].1) >= 1);
@@ -352,9 +354,10 @@ async fn test_worker_error_aborts_and_cancels() {
     assert!(get_cancellation_count(&s.workers[1].1) >= 1);
     assert!(get_cancellation_count(&s.workers[2].1) >= 1);
 
-    // All workers should be Ready after cleanup
+    // All workers are parked SettingUp pending recovery, not flipped Ready,
+    // so none can be redispatched while its cancelled proof is still unwinding.
     for (wid, _) in &s.workers {
-        assert_worker_state(&s.coordinator, wid, WorkerState::Ready).await;
+        assert_worker_state(&s.coordinator, wid, WorkerState::SettingUp).await;
     }
 }
 
@@ -412,7 +415,7 @@ async fn test_reconnect_terminal_job_gets_cancel() {
     // Fail the job (terminal state)
     s.coordinator.fail_job(&s.job_id, "terminated").await.unwrap();
 
-    // Worker is already Idle from fail_job cleanup; disconnect it
+    // Worker is parked SettingUp by fail_job recovery; disconnect it
     let w0_id = &s.workers[0].0;
     s.coordinator.workers_pool().disconnect_worker(w0_id).await.unwrap();
 

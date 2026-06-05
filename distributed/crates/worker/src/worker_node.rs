@@ -282,13 +282,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                 // Only truly fatal errors (e.g. registration rejected) set state
                                 // to Error inside the handler — those break the loop and trigger
                                 // reconnect. Recoverable errors (task dispatch failures, unknown
-                                // task types, etc.) just reset the worker to Ready and keep the
-                                // stream alive.
+                                // task types, etc.) drain and signal recovery so the coordinator,
+                                // which parks us SettingUp on the WorkerError, releases us again.
                                 if matches!(self.worker.state(), WorkerState::Error) {
                                     break;
                                 }
-                                self.worker.set_current_job(None);
-                                self.worker.set_state(WorkerState::Ready);
+                                self.recover_after_self_reported_error(loop_tx);
                             }
                         }
                         Err(e) => {
@@ -307,8 +306,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         Err(join_error) => {
                             error!("Computation task failed unexpectedly: {}", join_error);
                             self.report_computation_error(&message_sender, &join_error.to_string()).await;
-                            self.worker.set_current_job(None);
-                            self.worker.set_state(WorkerState::Ready);
+                            self.recover_after_self_reported_error(loop_tx);
                         }
                         Ok(()) => {
                             match loop_rx.try_recv() {
@@ -880,6 +878,35 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
     /// Healthy reset is sub-second; this only fires when the prover is stuck.
     const RECOVERY_TIMEOUT: Duration = Duration::from_secs(300);
+
+    /// Returns the worker to `Ready` after it self-reported a computation error.
+    ///
+    /// The coordinator fails the job on receiving the `WorkerError` and parks
+    /// this worker `SettingUp`, the same recovery barrier used for a peer
+    /// cancellation. This emits the `WorkerRecoveryComplete` that handshake
+    /// expects, so the worker is never left wedged `SettingUp`. A still-running
+    /// computation is drained through `spawn_post_failure_recovery` first,
+    /// otherwise the completion is signalled directly. With no active job nothing
+    /// was reported to the coordinator, so the worker simply returns to `Ready`.
+    fn recover_after_self_reported_error(&mut self, loop_tx: &LoopEventSender) {
+        if self.worker.current_job().is_none() {
+            self.worker.set_state(WorkerState::Ready);
+            return;
+        }
+        let had_computation = self.worker.has_current_computation();
+        self.worker.clear_current_job();
+        self.worker.set_state(WorkerState::Ready);
+        if had_computation {
+            self.spawn_post_failure_recovery(loop_tx.clone());
+        } else {
+            let rc = WorkerRecoveryComplete {
+                worker_id: self.worker_config.worker.worker_id.as_string(),
+            };
+            if let Err(e) = loop_tx.send_recovery_complete(rc) {
+                warn!("Failed to enqueue WorkerRecoveryComplete after error: {e}");
+            }
+        }
+    }
 
     async fn send_heartbeat_ack(
         &self,
