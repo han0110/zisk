@@ -141,6 +141,26 @@ pub fn pairing_check_bn254(
     let mut g1_valid = Vec::with_capacity(g1_points.len());
     let mut g2_valid = Vec::with_capacity(g2_points.len());
     for (g1, g2) in g1_points.iter().zip(g2_points.iter()) {
+        // NOTE: Validation must precede the on-curve checks below, since they work modulo P and a
+        // non-canonical (>= P) coordinate is otherwise silently reduced (Fp) or panics the field
+        // decode (Fp2).
+
+        // Validate G1 point field elements
+        let x1: [u64; 4] = g1[0..4].try_into().unwrap();
+        let y1: [u64; 4] = g1[4..8].try_into().unwrap();
+        if !lt(&x1, &P) || !lt(&y1, &P) {
+            return Err(PAIRING_CHECK_ERR_G1_NOT_IN_FIELD);
+        }
+
+        // Validate G2 point field elements
+        let x2_r: [u64; 4] = g2[0..4].try_into().unwrap();
+        let x2_i: [u64; 4] = g2[4..8].try_into().unwrap();
+        let y2_r: [u64; 4] = g2[8..12].try_into().unwrap();
+        let y2_i: [u64; 4] = g2[12..16].try_into().unwrap();
+        if !lt(&x2_r, &P) || !lt(&x2_i, &P) || !lt(&y2_r, &P) || !lt(&y2_i, &P) {
+            return Err(PAIRING_CHECK_ERR_G2_NOT_IN_FIELD);
+        }
+
         let g1_is_inf = eq(g1, &G1_IDENTITY);
         let g2_is_inf = eq(g2, &G2_IDENTITY);
 
@@ -176,13 +196,6 @@ pub fn pairing_check_bn254(
             continue;
         }
 
-        // Validate G1 point field elements
-        let x1: [u64; 4] = g1[0..4].try_into().unwrap();
-        let y1: [u64; 4] = g1[4..8].try_into().unwrap();
-        if !lt(&x1, &P) || !lt(&y1, &P) {
-            return Err(PAIRING_CHECK_ERR_G1_NOT_IN_FIELD);
-        }
-
         // Verify G1 point is on curve
         if !is_on_curve_bn254(
             g1,
@@ -190,15 +203,6 @@ pub fn pairing_check_bn254(
             hints,
         ) {
             return Err(PAIRING_CHECK_ERR_G1_NOT_ON_CURVE);
-        }
-
-        // Validate G2 point field elements
-        let x2_r: [u64; 4] = g2[0..4].try_into().unwrap();
-        let x2_i: [u64; 4] = g2[4..8].try_into().unwrap();
-        let y2_r: [u64; 4] = g2[8..12].try_into().unwrap();
-        let y2_i: [u64; 4] = g2[12..16].try_into().unwrap();
-        if !lt(&x2_r, &P) || !lt(&x2_i, &P) || !lt(&y2_r, &P) || !lt(&y2_i, &P) {
-            return Err(PAIRING_CHECK_ERR_G2_NOT_IN_FIELD);
         }
 
         // Verify G2 point is on twist curve
