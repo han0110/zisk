@@ -199,6 +199,9 @@ pub unsafe extern "C" fn zkvm_bn254_g1_add(
             hints,
         );
         if matches!(ret, bn254::G1_ADD_SUCCESS | bn254::G1_ADD_SUCCESS_INFINITY) {
+            if ret == bn254::G1_ADD_SUCCESS_INFINITY {
+                (*result).data.fill(0);
+            }
             ZKVM_EOK
         } else {
             ZKVM_EFAIL
@@ -233,6 +236,9 @@ pub unsafe extern "C" fn zkvm_bn254_g1_add(
                     (*result).data.as_mut_ptr(),
                 );
                 return if matches!(ret, bn254::G1_ADD_SUCCESS | bn254::G1_ADD_SUCCESS_INFINITY) {
+                    if ret == bn254::G1_ADD_SUCCESS_INFINITY {
+                        (*result).data.fill(0);
+                    }
                     ZKVM_EOK
                 } else {
                     ZKVM_EFAIL
@@ -273,6 +279,9 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
             hints,
         );
         if matches!(ret, bn254::G1_MUL_SUCCESS | bn254::G1_MUL_SUCCESS_INFINITY) {
+            if ret == bn254::G1_MUL_SUCCESS_INFINITY {
+                (*result).data.fill(0);
+            }
             ZKVM_EOK
         } else {
             ZKVM_EFAIL
@@ -307,6 +316,9 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
                     (*result).data.as_mut_ptr(),
                 );
                 return if matches!(ret, bn254::G1_MUL_SUCCESS | bn254::G1_MUL_SUCCESS_INFINITY) {
+                    if ret == bn254::G1_MUL_SUCCESS_INFINITY {
+                        (*result).data.fill(0);
+                    }
                     ZKVM_EOK
                 } else {
                     ZKVM_EFAIL
@@ -552,6 +564,9 @@ pub unsafe extern "C" fn zkvm_bls12_g1_add(
             hints,
         );
         if matches!(ret, bls12_381::G1_ADD_SUCCESS | bls12_381::G1_ADD_SUCCESS_INFINITY) {
+            if ret == bls12_381::G1_ADD_SUCCESS_INFINITY {
+                (*result).data.fill(0);
+            }
             ZKVM_EOK
         } else {
             ZKVM_EFAIL
@@ -589,6 +604,9 @@ pub unsafe extern "C" fn zkvm_bls12_g1_add(
                     ret,
                     bls12_381::G1_ADD_SUCCESS | bls12_381::G1_ADD_SUCCESS_INFINITY
                 ) {
+                    if ret == bls12_381::G1_ADD_SUCCESS_INFINITY {
+                        (*result).data.fill(0);
+                    }
                     ZKVM_EOK
                 } else {
                     ZKVM_EFAIL
@@ -629,6 +647,9 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
             hints,
         );
         if matches!(ret, bls12_381::G1_MSM_SUCCESS | bls12_381::G1_MSM_SUCCESS_INFINITY) {
+            if ret == bls12_381::G1_MSM_SUCCESS_INFINITY {
+                (*result).data.fill(0);
+            }
             ZKVM_EOK
         } else {
             ZKVM_EFAIL
@@ -659,6 +680,9 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
                     ret,
                     bls12_381::G1_MSM_SUCCESS | bls12_381::G1_MSM_SUCCESS_INFINITY
                 ) {
+                    if ret == bls12_381::G1_MSM_SUCCESS_INFINITY {
+                        (*result).data.fill(0);
+                    }
                     ZKVM_EOK
                 } else {
                     ZKVM_EFAIL
@@ -699,6 +723,9 @@ pub unsafe extern "C" fn zkvm_bls12_g2_add(
             hints,
         );
         if matches!(ret, bls12_381::G2_ADD_SUCCESS | bls12_381::G2_ADD_SUCCESS_INFINITY) {
+            if ret == bls12_381::G2_ADD_SUCCESS_INFINITY {
+                (*result).data.fill(0);
+            }
             ZKVM_EOK
         } else {
             ZKVM_EFAIL
@@ -736,6 +763,9 @@ pub unsafe extern "C" fn zkvm_bls12_g2_add(
                     ret,
                     bls12_381::G2_ADD_SUCCESS | bls12_381::G2_ADD_SUCCESS_INFINITY
                 ) {
+                    if ret == bls12_381::G2_ADD_SUCCESS_INFINITY {
+                        (*result).data.fill(0);
+                    }
                     ZKVM_EOK
                 } else {
                     ZKVM_EFAIL
@@ -776,6 +806,9 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
             hints,
         );
         if matches!(ret, bls12_381::G2_MSM_SUCCESS | bls12_381::G2_MSM_SUCCESS_INFINITY) {
+            if ret == bls12_381::G2_MSM_SUCCESS_INFINITY {
+                (*result).data.fill(0);
+            }
             ZKVM_EOK
         } else {
             ZKVM_EFAIL
@@ -806,6 +839,9 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
                     ret,
                     bls12_381::G2_MSM_SUCCESS | bls12_381::G2_MSM_SUCCESS_INFINITY
                 ) {
+                    if ret == bls12_381::G2_MSM_SUCCESS_INFINITY {
+                        (*result).data.fill(0);
+                    }
                     ZKVM_EOK
                 } else {
                     ZKVM_EFAIL
