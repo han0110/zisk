@@ -5,6 +5,8 @@ use crate::alloc_extern::vec;
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
+use crate::scratch_accelerators::scratch_vec_from_slice;
+
 use crate::zisklib::fcall_bigint_div;
 
 use super::{add_agtb, mul_long, RemLongScratch, U256};
@@ -42,7 +44,7 @@ pub fn rem_long_init(
     // Check if a = b, a < b or a > b
     let comp = U256::compare_slices(a, b);
     if comp == Ordering::Less {
-        return a.to_vec();
+        return scratch_vec_from_slice(a);
     } else if comp == Ordering::Equal {
         return vec![U256::ZERO];
     }
@@ -80,7 +82,7 @@ pub fn rem_long_init(
         hints,
     );
 
-    rem.to_vec()
+    scratch_vec_from_slice(rem)
 }
 
 /// Computes the remainder of two large numbers (with scratch)
@@ -116,7 +118,7 @@ pub fn rem_long(
     // Check if a = b, a < b or a > b
     let comp = U256::compare_slices(a, b);
     if comp == Ordering::Less {
-        return a.to_vec();
+        return scratch_vec_from_slice(a);
     } else if comp == Ordering::Equal {
         return vec![U256::ZERO];
     }
@@ -150,7 +152,7 @@ pub fn rem_long(
         hints,
     );
 
-    rem.to_vec()
+    scratch_vec_from_slice(rem)
 }
 
 /// Verify that a = q·b + r

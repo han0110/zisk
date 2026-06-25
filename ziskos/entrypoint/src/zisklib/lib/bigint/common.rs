@@ -8,10 +8,20 @@ use crate::alloc_extern::vec;
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
+use crate::scratch_accelerators::IsZero;
+
 /// A 256-bit unsigned integer stored as four little-endian 64-bit limbs.
 #[repr(transparent)]
 #[derive(Clone, Copy)]
 pub struct U256([u64; 4]); // little-endian: 4 × 64 = 256 bits
+
+// SAFETY: U256 is [u64; 4]; all-zeros is a valid, fully-initialised value.
+unsafe impl IsZero for U256 {
+    #[inline(always)]
+    fn is_zero(&self) -> bool {
+        self.0[0] == 0 && self.0[1] == 0 && self.0[2] == 0 && self.0[3] == 0
+    }
+}
 
 impl U256 {
     pub const ZERO: Self = U256([0, 0, 0, 0]);

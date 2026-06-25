@@ -17,3 +17,21 @@ pub use ziskos::zkvm_init;
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     core::intrinsics::abort()
 }
+
+#[cfg(zisk_guest)]
+struct Alloc;
+
+#[cfg(zisk_guest)]
+#[global_allocator]
+static ALLOC: Alloc = Alloc;
+
+#[cfg(zisk_guest)]
+unsafe impl core::alloc::GlobalAlloc for Alloc {
+    unsafe fn alloc(&self, _: core::alloc::Layout) -> *mut u8 {
+        core::intrinsics::abort()
+    }
+
+    unsafe fn dealloc(&self, _: *mut u8, _: core::alloc::Layout) {
+        core::intrinsics::abort()
+    }
+}

@@ -3,6 +3,8 @@
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
+use crate::scratch_accelerators::new_scratch_vec;
+
 use crate::{
     syscalls::{
         syscall_bls12_381_curve_add, syscall_bls12_381_curve_dbl, SyscallBls12_381CurveAddParams,
@@ -970,8 +972,8 @@ pub(crate) unsafe fn msm_safe_bls12_381_c(
     let ret_bytes: &mut [u8; 96] = &mut *(ret as *mut [u8; 96]);
 
     // Parse all pairs
-    let mut points = Vec::with_capacity(num_pairs);
-    let mut scalars = Vec::with_capacity(num_pairs);
+    let mut points = new_scratch_vec(num_pairs);
+    let mut scalars = new_scratch_vec(num_pairs);
     for i in 0..num_pairs {
         let pair_ptr = pairs.add(i * 128);
         let point_bytes: &[u8; 96] = &*(pair_ptr as *const [u8; 96]);

@@ -3,6 +3,8 @@ use crate::alloc_extern::vec;
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
+use crate::scratch_accelerators::scratch_vec_from_slice;
+
 use crate::zisklib::fcall_bigint_div;
 
 use super::{add_short, mul_short, U256};
@@ -95,5 +97,5 @@ pub fn div_short(
         assert!(U256::eq_slices(a, &q_b_r[..q_b_r_len]), "a != q·b + r");
     }
 
-    (quo.to_vec(), rem)
+    (scratch_vec_from_slice(quo), rem)
 }

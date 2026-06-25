@@ -6,6 +6,8 @@ use crate::alloc_extern::vec;
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
+use crate::scratch_accelerators::scratch_vec_from_slice;
+
 use crate::zisklib::fcall_bin_decomp;
 
 use super::{
@@ -387,7 +389,7 @@ fn bytes_be_to_u256_le(bytes: &[u8]) -> Vec<U256> {
     let mut padded = vec![0u64; padded_len];
     padded[..u64_le.len()].copy_from_slice(&u64_le);
 
-    U256::flat_to_slice(&padded).to_vec()
+    scratch_vec_from_slice(U256::flat_to_slice(&padded))
 }
 
 /// Convert little-endian U256 array to big-endian bytes

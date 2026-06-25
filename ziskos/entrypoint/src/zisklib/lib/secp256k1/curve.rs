@@ -1,6 +1,7 @@
 extern crate alloc;
-use alloc::vec;
 use alloc::vec::Vec;
+
+use crate::scratch_accelerators::{new_scratch_vec, new_scratch_vec_filled, ScratchVec};
 
 use crate::{
     syscalls::{
@@ -583,7 +584,7 @@ pub fn msm_secp256k1(
     }
 
     // Reduce each scalar
-    let mut reduced: Vec<[u64; 4]> = Vec::with_capacity(n);
+    let mut reduced: ScratchVec<[u64; 4]> = new_scratch_vec(n);
     for k in scalars.iter() {
         reduced.push(reduce_fn_secp256k1(
             k,
@@ -627,8 +628,8 @@ pub(crate) fn msm_secp256k1_max_bits(
     let mut result_is_inf = true;
 
     // Allocate buckets once, reset each window
-    let mut buckets: Vec<SyscallPoint256> = Vec::with_capacity(num_buckets);
-    let mut bucket_is_inf: Vec<bool> = vec![true; num_buckets];
+    let mut buckets: ScratchVec<SyscallPoint256> = new_scratch_vec(num_buckets);
+    let mut bucket_is_inf: ScratchVec<bool> = new_scratch_vec_filled(num_buckets, true);
     for _ in 0..num_buckets {
         buckets.push(SyscallPoint256 { x: IDENTITY_X, y: IDENTITY_Y });
     }

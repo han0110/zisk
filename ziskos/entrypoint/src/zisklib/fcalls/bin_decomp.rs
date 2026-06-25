@@ -3,6 +3,8 @@ use crate::alloc_extern::vec;
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
+use crate::scratch_accelerators::new_scratch_vec;
+
 use cfg_if::cfg_if;
 
 cfg_if! {
@@ -71,7 +73,7 @@ pub fn fcall_bin_decomp(
         }
         #[cfg(feature = "inputcpy")]
         {
-            let mut bits: Vec<u64> = Vec::with_capacity(len_bits);
+            let mut bits: Vec<u64> = new_scratch_vec(len_bits);
             ziskos_inputcpy!(bits, len_bits * 8);
             unsafe {
                 bits.set_len(len_bits);

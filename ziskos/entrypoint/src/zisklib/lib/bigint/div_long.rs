@@ -5,6 +5,8 @@ use crate::alloc_extern::vec;
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
+use crate::scratch_accelerators::scratch_vec_from_slice;
+
 use crate::zisklib::fcall_bigint_div;
 
 use super::{add_agtb, mul_long, U256};
@@ -41,7 +43,7 @@ pub fn div_long(
     // Check if a = b, a < b or a > b
     let comp = U256::compare_slices(a, b);
     if comp == Ordering::Less {
-        return (vec![U256::ZERO], a.to_vec());
+        return (vec![U256::ZERO], scratch_vec_from_slice(a));
     } else if comp == Ordering::Equal {
         return (vec![U256::ONE], vec![U256::ZERO]);
     }
@@ -115,5 +117,5 @@ pub fn div_long(
         assert!(U256::eq_slices(a, &q_b_r[..q_b_r_len]), "a != q·b + r");
     }
 
-    (quo.to_vec(), rem.to_vec())
+    (scratch_vec_from_slice(quo), scratch_vec_from_slice(rem))
 }
