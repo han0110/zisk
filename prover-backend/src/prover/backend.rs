@@ -43,6 +43,13 @@ pub(crate) struct ProverBackend {
     /// A recurser must be registered (via [`register_recurser`]) before it can
     /// prove — the same register-then-prove lifecycle as a regular program.
     registered_recursers: std::sync::Mutex<HashMap<String, RegisteredRecurser>>,
+    /// ROM whose Main instruction table the device currently holds. The table
+    /// is a pure function of the ROM, and `set_instruction_table` keeps it
+    /// until another program replaces it, so registering the same program again
+    /// would rebuild and re-upload bytes the device already has. Holding the
+    /// `Arc` keeps pointer identity a sound key, since a live allocation's
+    /// address cannot be reused by another ROM.
+    registered_instr_table: std::sync::Mutex<Option<Arc<zisk_core::ZiskRom>>>,
 }
 
 impl ProverBackend {
@@ -60,6 +67,7 @@ impl ProverBackend {
             proving_key_path,
             proving_key_snark_path,
             registered_recursers: std::sync::Mutex::new(HashMap::new()),
+            registered_instr_table: std::sync::Mutex::new(None),
         }
     }
 
@@ -196,26 +204,35 @@ impl ProverBackend {
         with_hints: bool,
     ) -> Result<()> {
         // Indexed Main: build + register this program's instruction table (before `set_rom`
-        // moves the Arc). Same gate the executor uses to pick the compact row.
+        // moves the Arc). Same gate the executor uses to pick the compact row. A program
+        // proved repeatedly registers once, since the device keeps the table until another
+        // program replaces it.
         if self.executor.is_packed() {
-            let table = ziskemu::Emu::build_main_instr_table::<Goldilocks>(&zisk_rom);
-            let words_per_entry =
-                zisk_pil::MainTraceRowInstrTable::<Goldilocks>::PACKED_WORDS as u64;
-            let num_entries = zisk_rom.sorted_pc_list.len() as u64;
-            tracing::info!(
-                "Main indexed packing: compact rows + {} instruction table ({:.1} MB)",
-                num_entries,
-                (table.len() * std::mem::size_of::<u64>()) as f64 / 1e6,
-            );
-            self.proofman
-                .register_instruction_table(
-                    zisk_pil::MAIN_AIRGROUP_ID,
-                    zisk_pil::MAIN_AIR_ID,
-                    &table,
+            let mut registered = self
+                .registered_instr_table
+                .lock()
+                .map_err(|e| anyhow::anyhow!("instruction table lock poisoned: {e}"))?;
+            if !registered.as_ref().is_some_and(|rom| Arc::ptr_eq(rom, &zisk_rom)) {
+                let table = ziskemu::Emu::build_main_instr_table::<Goldilocks>(&zisk_rom);
+                let words_per_entry =
+                    zisk_pil::MainTraceRowInstrTable::<Goldilocks>::PACKED_WORDS as u64;
+                let num_entries = zisk_rom.sorted_pc_list.len() as u64;
+                tracing::info!(
+                    "Main indexed packing: compact rows + {} instruction table ({:.1} MB)",
                     num_entries,
-                    words_per_entry,
-                )
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                    (table.len() * std::mem::size_of::<u64>()) as f64 / 1e6,
+                );
+                self.proofman
+                    .register_instruction_table(
+                        zisk_pil::MAIN_AIRGROUP_ID,
+                        zisk_pil::MAIN_AIR_ID,
+                        &table,
+                        num_entries,
+                        words_per_entry,
+                    )
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                *registered = Some(Arc::clone(&zisk_rom));
+            }
         }
 
         self.executor.set_rom(zisk_rom, with_hints)?;
