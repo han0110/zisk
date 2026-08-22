@@ -10,6 +10,7 @@
 
 /// Worker configuration.
 pub mod config;
+mod health;
 /// A requested stop (SIGTERM, SIGINT, SIGUSR1): every rank cleans up and exits with status 0.
 pub mod stop;
 mod stream_ordering;
