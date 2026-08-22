@@ -169,12 +169,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     pub async fn run(&mut self) -> Result<()> {
         assert!(self.worker.local_rank() == 0, "WorkerNodeGrpc should only be run by rank 0");
 
+        crate::health::serve();
+
         // Process-long channel: tasks scheduled before a stream drop must
         // still be deliverable on the next reconnect.
         let (raw_tx, mut loop_rx) = mpsc::unbounded_channel::<LoopEvent>();
         let loop_tx = LoopEventSender::new(raw_tx);
 
         loop {
+            crate::health::tick();
             match self.worker.state() {
                 WorkerState::Disconnected => {
                     if let Err(e) = self.connect_and_run(&loop_tx, &mut loop_rx).await {
@@ -249,6 +252,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         // Main non-blocking event loop
         loop {
+            crate::health::tick();
             // Take the computation handle out so select! can poll it directly:
             // happy path fires the channel arm (handle put back), panic/cancel
             // fires the handle arm. `biased` orders branches loop events >
@@ -1009,6 +1013,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 tokio::task::spawn_blocking(move || run_recovery(&*prover)),
             )
             .await;
+            // Every outcome but a completed handshake leaves the worker
+            // SettingUp with no `WorkerRecoveryComplete` ever emitted and the
+            // prover mutex still held, which no later job can recover from.
+            if !matches!(&join, Ok(Ok(Ok(())))) {
+                crate::health::mark_unrecoverable("recovery handshake never completed");
+            }
             match join {
                 Ok(Ok(Ok(()))) => {
                     info!("[Recovery] {worker_id}: cluster handshake done; signalling Ready");
