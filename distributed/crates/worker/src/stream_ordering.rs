@@ -129,6 +129,7 @@ impl StreamOrderingActor {
                     "StreamOrderingActor: shutdown timed out after {:?}; detaching thread",
                     timeout
                 );
+                crate::health::mark_unrecoverable("stream ordering thread detached while running");
                 return; // detach
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
