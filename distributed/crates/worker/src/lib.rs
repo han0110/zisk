@@ -10,6 +10,7 @@
 
 /// Worker configuration.
 pub mod config;
+mod health;
 mod stream_ordering;
 /// Prover-facing worker: runs the proving work for assigned jobs.
 pub mod worker;
