@@ -75,6 +75,8 @@ where
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
     if outcome.is_err() {
         error!("{label} task panicked for {job_id}; emitting failure result");
+        // The unwind skipped the ASM child's end-of-run handshake.
+        crate::health::mark_unrecoverable("compute task unwound, ASM stream desynchronised");
         on_panic();
     }
 }
@@ -656,6 +658,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             tracing::error!(
                 "[DETACHED-COMPUTATION] set_current_computation called while previous computation is still running — old task is now untracked"
             );
+            crate::health::mark_unrecoverable("compute task detached and untracked");
         }
         self.current_computation = Some(handle);
     }
