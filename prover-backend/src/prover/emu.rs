@@ -175,6 +175,10 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.get_execution_info()
     }
 
+    fn take_proof_records(&self) -> zisk_cluster_common::TaskTimingDto {
+        self.core_prover.backend.take_proof_records()
+    }
+
     fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
         self.register_program(&program.program_id, false)?;
         self.core_prover.backend.execute(stdin)

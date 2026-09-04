@@ -269,6 +269,37 @@ pub struct DomainExecutionStats {
     pub executor_time: DomainExecutorTime,
     /// Per-AIR instance plan (execute jobs only; empty otherwise).
     pub plan: Vec<DomainAirInstanceCount>,
+    #[allow(missing_docs)]
+    pub proof_start: Option<DateTime<Utc>>,
+    #[allow(missing_docs)]
+    pub tasks: Vec<DomainTaskTiming>,
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Clone)]
+pub struct DomainTaskTiming {
+    pub worker_id: String,
+    pub phase: DomainJobPhase,
+    pub coordinator_end: u64,
+    pub compute_duration_ms: u64,
+    pub executor_time: DomainExecutorTime,
+    pub step: u32,
+    pub proof_timings: Vec<DomainProofTiming>,
+    pub coordinator_start: u64,
+    pub worker_start: u64,
+    pub worker_end: u64,
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Clone)]
+pub struct DomainProofTiming {
+    pub id: u32,
+    pub proof_type: u32,
+    pub airgroup_id: u32,
+    pub air_name: String,
+    pub start: u64,
+    pub end: u64,
+    pub breakdown_ms: std::collections::HashMap<String, u32>,
 }
 
 /// Per-AIR planned instance count; the AIR name is derived from the ids by the consumer.

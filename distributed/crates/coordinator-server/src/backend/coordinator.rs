@@ -27,7 +27,9 @@ use super::{
     DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof,
     DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
+use super::{DomainProofTiming, DomainTaskTiming};
 use crate::errors::{internal, ApiError, ApiResult};
+use proofman_starks_lib_c::PROOF_TIMING_SECTION_NAMES;
 use zisk_cluster_common::{
     DataId, HintsModeDto, InputStreamDataDto, InputsModeDto, LaunchProofRequestDto,
     LaunchWrapRequestDto, ProofKind,
@@ -88,6 +90,49 @@ fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
                 airgroup_id: p.airgroup_id,
                 air_id: p.air_id,
                 count: p.count,
+            })
+            .collect(),
+        proof_start: s.proof_start,
+        tasks: s
+            .tasks
+            .into_iter()
+            .map(|t| DomainTaskTiming {
+                worker_id: t.worker_id.as_string(),
+                phase: coord_phase_to_domain(&t.phase),
+                coordinator_end: t.end_time.timestamp_millis() as u64,
+                compute_duration_ms: t.compute_duration_ms,
+                executor_time: DomainExecutorTime {
+                    total_duration: t.executor_time.total_duration,
+                    execution_duration: t.executor_time.execution_duration,
+                    count_and_plan_duration: t.executor_time.count_and_plan_duration,
+                    count_and_plan_mo_duration: t.executor_time.count_and_plan_mo_duration,
+                    asm: t
+                        .executor_time
+                        .asm_execution_duration
+                        .map(|a| DomainAsmExecution { time: a.time, mhz: a.mhz }),
+                },
+                step: t.step,
+                proof_timings: t
+                    .proof_timings
+                    .into_iter()
+                    .map(|p| DomainProofTiming {
+                        id: p.id,
+                        proof_type: p.proof_type,
+                        airgroup_id: p.airgroup_id,
+                        air_name: p.air_name,
+                        start: p.start,
+                        end: p.end,
+                        breakdown_ms: PROOF_TIMING_SECTION_NAMES
+                            .iter()
+                            .zip(p.breakdown_ms)
+                            .filter(|(_, ms)| *ms != 0)
+                            .map(|(name, ms)| (name.to_string(), ms))
+                            .collect(),
+                    })
+                    .collect(),
+                coordinator_start: t.coordinator_start,
+                worker_start: t.worker_start,
+                worker_end: t.worker_end,
             })
             .collect(),
     }

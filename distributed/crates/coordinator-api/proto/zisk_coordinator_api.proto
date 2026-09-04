@@ -75,6 +75,31 @@ message ExecutionStats {
   CostPerType  cost_per_type  = 3;
   ExecutorTime executor_time  = 4;
   repeated AirInstanceCount plan = 5;
+  google.protobuf.Timestamp proof_start = 6;
+  repeated TaskTiming       tasks       = 7;
+}
+
+message TaskTiming {
+  string                    worker_id             = 1;
+  JobPhase                  phase                 = 2;
+  uint64                    coordinator_end       = 3;
+  uint64                    compute_duration_ms   = 4;
+  ExecutorTime              executor_time         = 5;
+  uint32                    step                  = 6;
+  repeated ProofTiming      proof_timings         = 7;
+  uint64                    coordinator_start     = 8;
+  uint64                    worker_start          = 9;
+  uint64                    worker_end            = 10;
+}
+
+message ProofTiming {
+  uint32 id              = 1;
+  uint32 proof_type      = 2;
+  uint32 airgroup_id     = 3;
+  string air_name        = 4;
+  uint64 start           = 5;
+  uint64 end             = 6;
+  map<string, uint32> breakdown_ms = 7;
 }
 
 // Per-AIR planned instance count (the AIR name is derived from the ids by the consumer).

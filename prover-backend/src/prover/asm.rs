@@ -490,6 +490,10 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.get_execution_info()
     }
 
+    fn take_proof_records(&self) -> zisk_cluster_common::TaskTimingDto {
+        self.core_prover.backend.take_proof_records()
+    }
+
     fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
         self.register_program(&program.program_id, with_hints)?;

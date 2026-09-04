@@ -18,6 +18,7 @@ use crate::{
     SetupProgram, Shutdown, StreamData, StreamPayload, StreamType, TaskType, WorkerError,
     WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
 };
+use crate::{ProofTiming, TaskTiming};
 use zisk_cluster_common::*;
 
 impl From<StatsCostPerType> for CostPerType {
@@ -495,6 +496,53 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
             },
             result_data,
             worker_in_recovery: response.worker_in_recovery,
+            timing: response.timing.map(Into::into).unwrap_or_default(),
+        }
+    }
+}
+
+impl From<TaskTiming> for TaskTimingDto {
+    fn from(timing: TaskTiming) -> Self {
+        TaskTimingDto {
+            compute_duration_ms: timing.compute_duration_ms,
+            proof_timings: timing
+                .proof_timings
+                .into_iter()
+                .map(|proof| ProofTimingDto {
+                    id: proof.id,
+                    proof_type: proof.proof_type,
+                    airgroup_id: proof.airgroup_id,
+                    air_name: proof.air_name,
+                    start: proof.start,
+                    end: proof.end,
+                    breakdown_ms: proof.breakdown_ms,
+                })
+                .collect(),
+            worker_start: timing.worker_start,
+            worker_end: timing.worker_end,
+        }
+    }
+}
+
+impl From<TaskTimingDto> for TaskTiming {
+    fn from(timing: TaskTimingDto) -> Self {
+        TaskTiming {
+            compute_duration_ms: timing.compute_duration_ms,
+            proof_timings: timing
+                .proof_timings
+                .into_iter()
+                .map(|proof| ProofTiming {
+                    id: proof.id,
+                    proof_type: proof.proof_type,
+                    airgroup_id: proof.airgroup_id,
+                    air_name: proof.air_name,
+                    start: proof.start,
+                    end: proof.end,
+                    breakdown_ms: proof.breakdown_ms,
+                })
+                .collect(),
+            worker_start: timing.worker_start,
+            worker_end: timing.worker_end,
         }
     }
 }
