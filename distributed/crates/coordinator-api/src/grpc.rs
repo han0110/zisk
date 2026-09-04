@@ -30,6 +30,7 @@ use crate::dto::{
     DomainWrapRequest, RegisterAggregationProgramRequestDto, RegisterAggregationProgramResponseDto,
     RegisterGuestProgramRequestDto, RegisterGuestProgramResponseDto,
 };
+use crate::dto::{DomainProofTiming, DomainTaskTiming};
 use anyhow::Result;
 use prost_types::Timestamp;
 use proto::*;
@@ -473,6 +474,41 @@ impl From<DomainExecutionStats> for ExecutionStats {
                     count: p.count,
                 })
                 .collect(),
+            proof_start: stats.proof_start.map(datetime_to_ts),
+            tasks: stats
+                .tasks
+                .into_iter()
+                .map(|t| TaskTiming {
+                    worker_id: t.worker_id,
+                    phase: JobPhase::from(t.phase).into(),
+                    coordinator_end: t.coordinator_end,
+                    compute_duration_ms: t.compute_duration_ms,
+                    executor_time: Some(ExecutorTime {
+                        total_duration: t.executor_time.total_duration,
+                        execution_duration: t.executor_time.execution_duration,
+                        count_and_plan_duration: t.executor_time.count_and_plan_duration,
+                        count_and_plan_mo_duration: t.executor_time.count_and_plan_mo_duration,
+                        asm: t.executor_time.asm.map(|a| AsmExecution { time: a.time, mhz: a.mhz }),
+                    }),
+                    step: t.step,
+                    proof_timings: t
+                        .proof_timings
+                        .into_iter()
+                        .map(|p| ProofTiming {
+                            id: p.id,
+                            proof_type: p.proof_type,
+                            airgroup_id: p.airgroup_id,
+                            air_name: p.air_name,
+                            start: p.start,
+                            end: p.end,
+                            breakdown_ms: p.breakdown_ms,
+                        })
+                        .collect(),
+                    coordinator_start: t.coordinator_start,
+                    worker_start: t.worker_start,
+                    worker_end: t.worker_end,
+                })
+                .collect(),
         }
     }
 }
@@ -635,6 +671,45 @@ impl From<ExecutionStats> for DomainExecutionStats {
                     airgroup_id: p.airgroup_id as usize,
                     air_id: p.air_id as usize,
                     count: p.count,
+                })
+                .collect(),
+            proof_start: stats.proof_start.and_then(ts_to_datetime),
+            tasks: stats
+                .tasks
+                .into_iter()
+                .filter_map(|t| {
+                    let phase = DomainJobPhase::try_from(t.phase).ok()?;
+                    let et = t.executor_time.unwrap_or_default();
+                    Some(DomainTaskTiming {
+                        worker_id: t.worker_id,
+                        phase,
+                        coordinator_end: t.coordinator_end,
+                        compute_duration_ms: t.compute_duration_ms,
+                        executor_time: DomainExecutorTime {
+                            total_duration: et.total_duration,
+                            execution_duration: et.execution_duration,
+                            count_and_plan_duration: et.count_and_plan_duration,
+                            count_and_plan_mo_duration: et.count_and_plan_mo_duration,
+                            asm: et.asm.map(|a| DomainAsmExecution { time: a.time, mhz: a.mhz }),
+                        },
+                        step: t.step,
+                        proof_timings: t
+                            .proof_timings
+                            .into_iter()
+                            .map(|p| DomainProofTiming {
+                                id: p.id,
+                                proof_type: p.proof_type,
+                                airgroup_id: p.airgroup_id,
+                                air_name: p.air_name,
+                                start: p.start,
+                                end: p.end,
+                                breakdown_ms: p.breakdown_ms,
+                            })
+                            .collect(),
+                        coordinator_start: t.coordinator_start,
+                        worker_start: t.worker_start,
+                        worker_end: t.worker_end,
+                    })
                 })
                 .collect(),
         }

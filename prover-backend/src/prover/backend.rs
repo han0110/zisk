@@ -6,6 +6,7 @@ use crate::{
 use anyhow::Result;
 use colored::Colorize;
 use proofman::get_vadcop_final_proof_vkey;
+use proofman::RECORD_KIND_PER_INSTANCE;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
     SnarkProtocol, SnarkWrapper, WitnessInfo,
@@ -18,6 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use zisk_asm_runner::HintsShmem;
 use zisk_cluster_common::StreamMessage;
+use zisk_cluster_common::{ProofTimingDto, TaskTimingDto};
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
@@ -660,6 +662,32 @@ impl ProverBackend {
         let witness_info = self.proofman.get_witness_info();
         let (execution_result, _) = self.executor.get_execution_result();
         Ok((witness_info, execution_result.executor_time))
+    }
+
+    pub(crate) fn take_proof_records(&self) -> TaskTimingDto {
+        let global_info = &self.proofman.get_wcm().get_pctx().global_info;
+        let records = self.proofman.take_proof_records();
+        let proof_timings = records
+            .into_iter()
+            .map(|record| ProofTimingDto {
+                id: record.id as u32,
+                proof_type: record.proof_type as u32,
+                airgroup_id: record.airgroup_id as u32,
+                air_name: if RECORD_KIND_PER_INSTANCE.contains(&record.proof_type) {
+                    global_info.get_air_name(record.airgroup_id, record.air_id).to_string()
+                } else {
+                    String::new()
+                },
+                start: record.start_ms,
+                end: record.end_ms,
+                breakdown_ms: if record.breakdown_ms.iter().any(|&ms| ms != 0) {
+                    record.breakdown_ms.to_vec()
+                } else {
+                    Vec::new()
+                },
+            })
+            .collect();
+        TaskTimingDto { proof_timings, ..Default::default() }
     }
 
     pub(crate) fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {

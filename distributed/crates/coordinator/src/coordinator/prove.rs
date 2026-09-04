@@ -2,12 +2,14 @@ use crate::coordinator_errors::{CoordinatorError, CoordinatorResult};
 use chrono::Utc;
 use std::time::Duration;
 use tracing::{error, info, warn};
+use zisk_cluster_common::TaskRecord;
 use zisk_cluster_common::{
     AggProofData, ChallengesDto, CoordinatorMessageDto, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, Job,
     JobId, JobPhase, JobResult, JobResultData, JobState, PendingAggTask, PhaseTimings,
     ProveParamsDto, WorkerId, WorkerState,
 };
+use zisk_common::ZiskExecutorTime;
 
 use crate::Coordinator;
 
@@ -130,6 +132,7 @@ impl Coordinator {
             // recurser never returns, the disconnect handler or the phase-3
             // timeout fails the job.
             job.agg_task_inflight = Some(task.clone());
+            job.task_starts.insert(agg_worker_id.clone(), Utc::now().timestamp_millis() as u64);
             drop(job);
             self.send_recurser_task(
                 &job_id,
@@ -195,6 +198,20 @@ impl Coordinator {
             worker_id.clone(),
             JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
         );
+
+        let coordinator_start = job.task_starts.remove(&worker_id).unwrap_or_default();
+        job.task_records.push(TaskRecord {
+            worker_id,
+            phase: JobPhase::Prove,
+            end_time: Utc::now(),
+            step: 0,
+            compute_duration_ms: execute_task_response.timing.compute_duration_ms,
+            executor_time: ZiskExecutorTime::default(),
+            proof_timings: execute_task_response.timing.proof_timings,
+            coordinator_start,
+            worker_start: execute_task_response.timing.worker_start,
+            worker_end: execute_task_response.timing.worker_end,
+        });
 
         Ok(())
     }

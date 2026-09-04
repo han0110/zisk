@@ -274,6 +274,24 @@ message ExecuteTaskResponse {
     WrapResult wrap_result = 10;
   }
   bool worker_in_recovery = 11;
+  TaskTiming timing = 12;
+}
+
+message TaskTiming {
+  uint64 compute_duration_ms = 1;
+  repeated ProofTiming proof_timings = 2;
+  uint64 worker_start = 3;
+  uint64 worker_end = 4;
+}
+
+message ProofTiming {
+  uint32 id              = 1;
+  uint32 proof_type      = 2;
+  uint32 airgroup_id     = 3;
+  string air_name        = 4;
+  uint64 start           = 5;
+  uint64 end             = 6;
+  repeated uint32 breakdown_ms = 7;
 }
 
 message WitnessExecInfo {

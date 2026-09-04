@@ -395,6 +395,9 @@ pub trait ProverEngine {
     /// Witness metadata and executor timing from the last run.
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)>;
 
+    #[allow(missing_docs)]
+    fn take_proof_records(&self) -> zisk_cluster_common::TaskTimingDto;
+
     /// Read a range of witness rows for the given instance.
     fn get_instance_trace(
         &self,
@@ -670,6 +673,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Witness metadata and executor timing from the last run.
     pub fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
         self.prover.get_execution_info()
+    }
+
+    #[allow(missing_docs)]
+    pub fn take_proof_records(&self) -> zisk_cluster_common::TaskTimingDto {
+        self.prover.take_proof_records()
     }
 
     /// Execute the prover with the given standard input and output path.

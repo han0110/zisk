@@ -7502,6 +7502,7 @@ dependencies = [
  "hex",
  "metrics",
  "metrics-exporter-prometheus",
+ "proofman-starks-lib-c",
  "serde",
  "signal-hook",
  "signal-hook-tokio",
