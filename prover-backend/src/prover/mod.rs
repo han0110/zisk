@@ -372,6 +372,26 @@ pub struct ZiskAggPhaseResult {
     pub agg_proofs: Vec<AggProofs>,
 }
 
+/// One proof proofman produced, offset from the recorder origin.
+#[derive(Debug, Clone)]
+pub struct ProofTiming {
+    /// The instance id, the fold index of a fold record, or zero for a root step.
+    pub id: u32,
+    /// The proofman record kind, one of the `ProofType` variants or a host step kind past them.
+    pub proof_type: u32,
+    /// The airgroup the proof belongs to.
+    pub airgroup_id: u32,
+    /// The AIR name, empty for a root step of the contributions phase, a fold and the
+    /// two final proofs.
+    pub air_name: String,
+    /// Start of the proof, offset from the recorder origin, in milliseconds.
+    pub start_offset_ms: u32,
+    /// End of the proof, offset from the recorder origin, in milliseconds.
+    pub end_offset_ms: u32,
+    /// The proof sections, in milliseconds, empty when the proof carried no timing.
+    pub breakdown_ms: Vec<u32>,
+}
+
 /// Backend-specific proving engine.
 ///
 /// Implemented by each backend ([`EmuProver`], [`AsmProver`]) to drive setup,
@@ -425,6 +445,10 @@ pub trait ProverEngine {
 
     /// Witness metadata and executor timing from the last run.
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)>;
+
+    /// The proof spans closed since the previous call, with the age of the
+    /// origin they are offset from.
+    fn take_proof_records(&self) -> (Vec<ProofTiming>, u64);
 
     /// Read a range of witness rows for the given instance.
     fn get_instance_trace(
@@ -694,6 +718,12 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Witness metadata and executor timing from the last run.
     pub fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
         self.prover.get_execution_info()
+    }
+
+    /// The proof spans closed since the previous call, with the age of the
+    /// origin they are offset from.
+    pub fn take_proof_records(&self) -> (Vec<ProofTiming>, u64) {
+        self.prover.take_proof_records()
     }
 
     /// Execute the prover with the given standard input and output path.

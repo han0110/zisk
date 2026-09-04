@@ -1,4 +1,5 @@
-use zisk_cluster_common::JobPhase;
+use chrono::{DateTime, Utc};
+use zisk_cluster_common::{JobPhase, TaskRecord};
 use zisk_common::{AirInstanceCount, ZiskExecutorTime};
 
 /// Events broadcast on the per-job channel as the job transitions through states.
@@ -86,4 +87,8 @@ pub struct CoordinatorExecutionStats {
     pub executor_time: ZiskExecutorTime,
     /// Per-AIR instance plan.
     pub plan: Vec<AirInstanceCount>,
+    /// Start of the contributions phase, the origin of every task timing.
+    pub proof_start: Option<DateTime<Utc>>,
+    /// Per-task timings, in the order the coordinator received them.
+    pub tasks: Vec<TaskRecord>,
 }

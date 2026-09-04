@@ -21,7 +21,9 @@ use zisk_cluster_common::{
 };
 use zisk_cluster_common::{DataId, JobId};
 use zisk_common::{ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
-use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
+use zisk_prover_backend::{
+    Asm, Emu, GuestProgram, ProofTiming as BackendProofTiming, ZiskBackend, ZiskProver,
+};
 
 use crate::config::WorkerServiceConfig;
 
@@ -61,6 +63,22 @@ pub(crate) fn run_recovery<R: RecoveryActions + ?Sized>(prover: &R) -> Result<()
     prover.wait_until_proofman_ready();
     prover.cluster_barrier();
     Ok(())
+}
+
+/// Converts the backend per-proof spans to the wire type.
+fn proof_timings_to_proto(timings: Vec<BackendProofTiming>) -> Vec<ProofTiming> {
+    timings
+        .into_iter()
+        .map(|timing| ProofTiming {
+            id: timing.id,
+            proof_type: timing.proof_type,
+            airgroup_id: timing.airgroup_id,
+            air_name: timing.air_name,
+            start_offset_ms: timing.start_offset_ms,
+            end_offset_ms: timing.end_offset_ms,
+            breakdown_ms: timing.breakdown_ms,
+        })
+        .collect()
 }
 
 /// A worker process, specialized by MPI role: rank 0 talks to the coordinator
@@ -415,7 +433,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 )
                 .await
             }
-            ComputationResult::Contribution { job_id, success, result, task_received_time } => {
+            ComputationResult::Contribution {
+                job_id,
+                success,
+                result,
+                task_received_time,
+                compute_duration_ms,
+                proof_timings,
+                records_origin_age_ms,
+            } => {
                 self.send_partial_contribution(
                     job_id,
                     success,
@@ -423,11 +449,31 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     message_sender,
                     loop_tx,
                     task_received_time,
+                    compute_duration_ms,
+                    proof_timings,
+                    records_origin_age_ms,
                 )
                 .await
             }
-            ComputationResult::Proofs { job_id, success, result } => {
-                self.send_proof(job_id, success, result, message_sender, loop_tx).await
+            ComputationResult::Proofs {
+                job_id,
+                success,
+                result,
+                compute_duration_ms,
+                proof_timings,
+                records_origin_age_ms,
+            } => {
+                self.send_proof(
+                    job_id,
+                    success,
+                    result,
+                    message_sender,
+                    loop_tx,
+                    compute_duration_ms,
+                    proof_timings,
+                    records_origin_age_ms,
+                )
+                .await
             }
             ComputationResult::AggProof {
                 job_id,
@@ -436,6 +482,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 executed_steps,
                 proof_type,
                 instances,
+                compute_duration_ms,
+                proof_timings,
+                records_origin_age_ms,
             } => {
                 self.send_recurser(
                     job_id,
@@ -445,6 +494,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     executed_steps,
                     proof_type,
                     instances,
+                    compute_duration_ms,
+                    proof_timings,
+                    records_origin_age_ms,
                 )
                 .await
             }
@@ -556,6 +608,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         loop_tx: &LoopEventSender,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+        compute_duration_ms: u64,
+        proof_timings: Vec<BackendProofTiming>,
+        records_origin_age_ms: u64,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
@@ -640,6 +695,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data: result_data_msg,
                 error_message,
                 worker_in_recovery,
+                compute_duration_ms,
+                proof_timings: proof_timings_to_proto(proof_timings),
+                records_origin_age_ms,
             })),
         };
 
@@ -679,6 +737,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
         }
+
+        // The execution reply carries no spans, so discard the records of this
+        // task to keep them out of the next take.
+        let _ = self.worker.prover_arc().take_proof_records();
 
         let (result_data, error_message) = match result {
             Ok(data) => {
@@ -761,6 +823,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data: result_data_msg,
                 error_message,
                 worker_in_recovery,
+                compute_duration_ms: 0,
+                proof_timings: Vec::new(),
+                records_origin_age_ms: 0,
             })),
         };
 
@@ -776,6 +841,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn send_proof(
         &mut self,
         job_id: JobId,
@@ -783,6 +849,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         result: Result<Vec<AggProofs>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         loop_tx: &LoopEventSender,
+        compute_duration_ms: u64,
+        proof_timings: Vec<BackendProofTiming>,
+        records_origin_age_ms: u64,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
@@ -830,6 +899,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data: Some(ResultData::Proofs(ProofList { proofs: result_data })),
                 error_message,
                 worker_in_recovery,
+                compute_duration_ms,
+                proof_timings: proof_timings_to_proto(proof_timings),
+                records_origin_age_ms,
             })),
         };
 
@@ -855,6 +927,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         executed_steps: u64,
         proof_type: ProofKind,
         instances: u64,
+        compute_duration_ms: u64,
+        proof_timings: Vec<BackendProofTiming>,
+        records_origin_age_ms: u64,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
@@ -957,6 +1032,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data,
                 error_message,
                 worker_in_recovery: false,
+                compute_duration_ms,
+                proof_timings: proof_timings_to_proto(proof_timings),
+                records_origin_age_ms,
             })),
         };
 
@@ -1256,6 +1334,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                 result_data: None,
                                 error_message: e.to_string(),
                                 worker_in_recovery: false,
+                                compute_duration_ms: 0,
+                                proof_timings: Vec::new(),
+                                records_origin_age_ms: 0,
                             },
                         )),
                     };
@@ -2268,6 +2349,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data,
                 error_message,
                 worker_in_recovery: false,
+                compute_duration_ms: 0,
+                proof_timings: Vec::new(),
+                records_origin_age_ms: 0,
             })),
         };
 

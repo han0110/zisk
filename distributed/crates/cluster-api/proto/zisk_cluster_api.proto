@@ -274,6 +274,20 @@ message ExecuteTaskResponse {
     WrapResult wrap_result = 10;
   }
   bool worker_in_recovery = 11;
+  uint64 compute_duration_ms = 12; // Wall time of the proofman phase call, excluding the input load
+  repeated ProofTiming proof_timings = 13;
+  uint64 records_origin_age_ms = 14; // Age of the recorder origin when the worker took the records
+}
+
+// One proof proofman produced, offset from the recorder origin of the response.
+message ProofTiming {
+  uint32 id              = 1; // Instance id, the fold index of a fold record, or zero for a root step
+  uint32 proof_type      = 2; // proofman ProofType as_usize
+  uint32 airgroup_id     = 3;
+  string air_name        = 4; // Empty for a root step of the contributions phase, a fold and the two final proofs
+  uint32 start_offset_ms = 5;
+  uint32 end_offset_ms   = 6;
+  repeated uint32 breakdown_ms = 7; // The proof sections, empty when none
 }
 
 message WitnessExecInfo {

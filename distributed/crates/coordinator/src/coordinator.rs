@@ -212,6 +212,8 @@ fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
         other_cost: cost.other_cost,
         executor_time: executor_time_from_job(job),
         plan: plan_from_job(job),
+        proof_start: job.phase_start_time(&JobPhase::Contributions),
+        tasks: job.task_records.clone(),
     }
 }
 
@@ -1902,7 +1904,7 @@ mod tests {
     use crate::test_utils::*;
     use zisk_cluster_common::{
         ComputeCapacity, HintsModeDto, InputsModeDto, Job, JobExecutionMode, JobPhase, JobState,
-        PhaseTimings, WorkerState,
+        PhaseTimings, ProofTimingDto, WorkerState,
     };
 
     fn test_config_with(overrides: impl FnOnce(&mut Config)) -> Config {
@@ -2141,6 +2143,9 @@ mod tests {
                 },
             )),
             worker_in_recovery: false,
+            compute_duration_ms: 0,
+            proof_timings: Vec::new(),
+            records_origin_age_ms: 0,
         };
 
         // Should succeed (not error) — the late response is silently discarded
@@ -2175,6 +2180,9 @@ mod tests {
             error_message: Some("contribution failed".into()),
             result_data: None,
             worker_in_recovery: true,
+            compute_duration_ms: 0,
+            proof_timings: Vec::new(),
+            records_origin_age_ms: 0,
         };
 
         coordinator.handle_stream_execute_task_response(late_response).await.unwrap();
@@ -2204,6 +2212,9 @@ mod tests {
                 instances: 0,
             })),
             worker_in_recovery: false,
+            compute_duration_ms: 0,
+            proof_timings: Vec::new(),
+            records_origin_age_ms: 0,
         }
     }
 
@@ -2240,6 +2251,9 @@ mod tests {
                 },
             )),
             worker_in_recovery: false,
+            compute_duration_ms: 0,
+            proof_timings: Vec::new(),
+            records_origin_age_ms: 0,
         }
     }
 
@@ -2379,6 +2393,197 @@ mod tests {
         assert!(job.agg_task_inflight.is_some(), "in-flight task must survive a rejected ack");
     }
 
+    /// Builds a `Challenges` response reporting the given worker-measured duration.
+    fn contributions_response(
+        job_id: &JobId,
+        worker_id: &WorkerId,
+        compute_duration_ms: u64,
+    ) -> zisk_cluster_common::ExecuteTaskResponseDto {
+        use zisk_cluster_common::{
+            ChallengesDto, ContributionsResultDataDto, ExecuteTaskResponseDto,
+            ExecuteTaskResponseResultDataDto, WitnessInfoDto, ZiskExecutorTimeDto,
+        };
+        ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: worker_id.clone(),
+            success: true,
+            error_message: None,
+            result_data: Some(ExecuteTaskResponseResultDataDto::Challenges(
+                ContributionsResultDataDto {
+                    challenges: vec![ChallengesDto {
+                        worker_index: 0,
+                        airgroup_id: 0,
+                        challenge: vec![],
+                    }],
+                    witness_info: WitnessInfoDto {
+                        witness_time: 0.0,
+                        publics: vec![],
+                        proof_values: vec![],
+                        summary_info: String::new(),
+                        total_instances: 0,
+                    },
+                    zisk_executor_time: ZiskExecutorTimeDto {
+                        total_duration: 7.0,
+                        execution_duration: 5.0,
+                        count_and_plan_duration: 1.0,
+                        count_and_plan_mo_duration: 1.0,
+                        asm_execution_duration: None,
+                        task_received_time: 0.0,
+                    },
+                    cost_per_type: StatsCostPerType::default(),
+                },
+            )),
+            worker_in_recovery: false,
+            compute_duration_ms,
+            proof_timings: Vec::new(),
+            records_origin_age_ms: 0,
+        }
+    }
+
+    /// Builds a basic-proof span of one AIR instance.
+    fn proof_timing(id: u32, air_name: &str, start_offset_ms: u32) -> ProofTimingDto {
+        ProofTimingDto {
+            id,
+            proof_type: 0,
+            airgroup_id: 0,
+            air_name: air_name.to_string(),
+            start_offset_ms,
+            end_offset_ms: start_offset_ms + 5,
+            breakdown_ms: vec![1, 2, 3, 4, 5, 6, 7, 8],
+        }
+    }
+
+    /// Builds a `Proofs` response reporting the given worker-measured duration
+    /// and per-proof spans, which the worker takes right before it replies.
+    fn proofs_response(
+        job_id: &JobId,
+        worker_id: &WorkerId,
+        compute_duration_ms: u64,
+        proof_timings: Vec<ProofTimingDto>,
+    ) -> zisk_cluster_common::ExecuteTaskResponseDto {
+        use zisk_cluster_common::{
+            ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, ProofStarkDto,
+        };
+        let records_origin_age_ms = if proof_timings.is_empty() { 0 } else { compute_duration_ms };
+        ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: worker_id.clone(),
+            success: true,
+            error_message: None,
+            result_data: Some(ExecuteTaskResponseResultDataDto::Proofs(vec![ProofStarkDto {
+                airgroup_id: 0,
+                values: vec![],
+                worker_idx: 0,
+            }])),
+            worker_in_recovery: false,
+            compute_duration_ms,
+            proof_timings,
+            records_origin_age_ms,
+        }
+    }
+
+    /// A completed prove job reports one task record per worker for the
+    /// contributions and the prove phase, and one per aggregation step with
+    /// increasing ordinals. Every record carries the worker-measured duration, a
+    /// receipt stamp taken on the coordinator clock, and the per-proof spans the
+    /// worker reported with the origin they are offset from. The records ride the
+    /// completed event, because `Job::cleanup` clears them right after it fires.
+    #[tokio::test]
+    async fn test_completed_job_reports_task_records() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+        let (w0_id, w1_id) = (workers[0].0.clone(), workers[1].0.clone());
+        coordinator.alloc_job_events(&job_id).await;
+
+        let launched_at = Utc::now();
+
+        for (worker_id, duration_ms) in [(&w0_id, 11), (&w1_id, 12)] {
+            let response = contributions_response(&job_id, worker_id, duration_ms);
+            coordinator.handle_stream_execute_task_response(response).await.unwrap();
+        }
+
+        // The first worker to finish phase 2 becomes the recurser, so w0 answers
+        // both aggregation steps: the empty ack for w1's proofs, then the proof.
+        let w0_timings = vec![proof_timing(7, "Main", 1), proof_timing(9, "Mem", 8)];
+        for (worker_id, duration_ms, proof_timings) in
+            [(&w0_id, 21, w0_timings), (&w1_id, 22, Vec::new())]
+        {
+            let response = proofs_response(&job_id, worker_id, duration_ms, proof_timings);
+            coordinator.handle_stream_execute_task_response(response).await.unwrap();
+        }
+
+        let mut intermediate_ack = final_proof_response(&job_id, &w0_id, vec![]);
+        intermediate_ack.compute_duration_ms = 31;
+        coordinator.handle_stream_execute_task_response(intermediate_ack).await.unwrap();
+
+        let proof_bytes = bincode::serde::encode_to_vec(
+            zisk_common::Proof::default(),
+            bincode::config::standard(),
+        )
+        .unwrap();
+        let mut final_proof = final_proof_response(&job_id, &w0_id, proof_bytes);
+        final_proof.compute_duration_ms = 32;
+        coordinator.handle_stream_execute_task_response(final_proof).await.unwrap();
+
+        let terminal = coordinator.get_terminal_event(&job_id).await;
+        let Some(CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Prove {
+            stats,
+            ..
+        })) = terminal
+        else {
+            panic!("expected a completed prove event, got {terminal:?}");
+        };
+
+        let proof_start = stats.proof_start.expect("the contributions phase start is reported");
+        assert!(proof_start <= launched_at);
+
+        let of_phase = |phase: JobPhase| -> Vec<&zisk_cluster_common::TaskRecord> {
+            stats.tasks.iter().filter(|record| record.phase == phase).collect()
+        };
+
+        let contributions = of_phase(JobPhase::Contributions);
+        assert_eq!(contributions.len(), 2);
+        assert_eq!(
+            contributions.iter().map(|record| record.compute_duration_ms).collect::<Vec<_>>(),
+            vec![11, 12]
+        );
+        assert_eq!(contributions[0].executor_time.total_duration, 7);
+
+        let prove = of_phase(JobPhase::Prove);
+        assert_eq!(prove.len(), 2);
+        assert_eq!(
+            prove.iter().map(|record| record.compute_duration_ms).collect::<Vec<_>>(),
+            vec![21, 22]
+        );
+        assert_eq!(
+            prove[0]
+                .proof_timings
+                .iter()
+                .map(|timing| (timing.id, timing.air_name.as_str(), timing.end_offset_ms))
+                .collect::<Vec<_>>(),
+            vec![(7, "Main", 6), (9, "Mem", 13)]
+        );
+        assert_eq!(prove[0].proof_timings[0].breakdown_ms, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(prove[0].records_origin_age_ms, 21);
+        assert!(prove[1].proof_timings.is_empty());
+
+        let recurse = of_phase(JobPhase::Recurse);
+        assert_eq!(recurse.iter().map(|record| record.step).collect::<Vec<_>>(), vec![1, 2]);
+        assert!(recurse.iter().all(|record| record.worker_id == w0_id));
+        assert_eq!(
+            recurse.iter().map(|record| record.compute_duration_ms).collect::<Vec<_>>(),
+            vec![31, 32]
+        );
+
+        assert!(stats.tasks.iter().all(|record| record.end_time >= proof_start));
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert!(
+            entry.read().await.task_records.is_empty(),
+            "cleanup must release the records once the event carries them"
+        );
+    }
+
     /// One sample of every `ExecuteTaskResponseResultDataDto` variant, in
     /// declaration order: Execution, Challenges, Proofs, FinalProof, WrapResult.
     fn sample_payloads() -> [zisk_cluster_common::ExecuteTaskResponseResultDataDto; 5] {
@@ -2477,6 +2682,9 @@ mod tests {
                 error_message: None,
                 result_data: Some(payload),
                 worker_in_recovery: false,
+                compute_duration_ms: 0,
+                proof_timings: Vec::new(),
+                records_origin_age_ms: 0,
             };
             let err = coordinator.handle_stream_execute_task_response(response).await.unwrap_err();
             assert!(
@@ -3363,6 +3571,9 @@ mod tests {
                 },
             )),
             worker_in_recovery: false,
+            compute_duration_ms: 0,
+            proof_timings: Vec::new(),
+            records_origin_age_ms: 0,
         };
         coordinator.handle_execution_completion(response).await.unwrap();
 
@@ -3407,6 +3618,9 @@ mod tests {
                 proof_data: vec![],
             })),
             worker_in_recovery: false,
+            compute_duration_ms: 0,
+            proof_timings: Vec::new(),
+            records_origin_age_ms: 0,
         };
         coordinator.handle_wrap_completion(response).await.unwrap();
 
@@ -4116,6 +4330,9 @@ mod tests {
                 },
             )),
             worker_in_recovery: false,
+            compute_duration_ms: 0,
+            proof_timings: Vec::new(),
+            records_origin_age_ms: 0,
         };
         let err = coordinator
             .handle_stream_execute_task_response(response)

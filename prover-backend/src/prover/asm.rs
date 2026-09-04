@@ -3,8 +3,8 @@ use crate::{
     check_paths_exist, ensure_program_vk, get_asm_paths, get_rom_bin_path,
     guest::ProgramId,
     prover::{ProverBackend, ProverEngine, ZiskBackend, ZiskProver},
-    BackendProverOpts, ExecuteOutput, GuestProgram, ProveOutput, VerifyConstraintsOutput,
-    ZiskAggPhaseResult, ZiskPhaseResult,
+    BackendProverOpts, ExecuteOutput, GuestProgram, ProofTiming, ProveOutput,
+    VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -488,6 +488,10 @@ impl ProverEngine for AsmProver {
 
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
         self.core_prover.backend.get_execution_info()
+    }
+
+    fn take_proof_records(&self) -> (Vec<ProofTiming>, u64) {
+        self.core_prover.backend.take_proof_records()
     }
 
     fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {

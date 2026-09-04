@@ -25,7 +25,8 @@ use super::{
     DomainJobEventCancelled, DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress,
     DomainJobEventQueued, DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure,
     DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof,
-    DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
+    DomainProofKind, DomainProofTiming, DomainTaskTiming, InputChunkStream, JobEventStream,
+    SubmitJobResult, WaitResult,
 };
 use crate::errors::{internal, ApiError, ApiResult};
 use zisk_cluster_common::{
@@ -88,6 +89,42 @@ fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
                 airgroup_id: p.airgroup_id,
                 air_id: p.air_id,
                 count: p.count,
+            })
+            .collect(),
+        proof_start: s.proof_start,
+        tasks: s
+            .tasks
+            .into_iter()
+            .map(|t| DomainTaskTiming {
+                worker_id: t.worker_id.as_string(),
+                phase: coord_phase_to_domain(&t.phase),
+                completed_at: Some(t.end_time),
+                compute_duration_ms: t.compute_duration_ms,
+                executor_time: DomainExecutorTime {
+                    total_duration: t.executor_time.total_duration,
+                    execution_duration: t.executor_time.execution_duration,
+                    count_and_plan_duration: t.executor_time.count_and_plan_duration,
+                    count_and_plan_mo_duration: t.executor_time.count_and_plan_mo_duration,
+                    asm: t
+                        .executor_time
+                        .asm_execution_duration
+                        .map(|a| DomainAsmExecution { time: a.time, mhz: a.mhz }),
+                },
+                step: t.step,
+                proof_timings: t
+                    .proof_timings
+                    .into_iter()
+                    .map(|p| DomainProofTiming {
+                        id: p.id,
+                        proof_type: p.proof_type,
+                        airgroup_id: p.airgroup_id,
+                        air_name: p.air_name,
+                        start_offset_ms: p.start_offset_ms,
+                        end_offset_ms: p.end_offset_ms,
+                        breakdown_ms: p.breakdown_ms,
+                    })
+                    .collect(),
+                records_origin_age_ms: t.records_origin_age_ms,
             })
             .collect(),
     }

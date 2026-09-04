@@ -6,8 +6,9 @@ use zisk_cluster_common::{
     AggProofData, ChallengesDto, CoordinatorMessageDto, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, Job,
     JobId, JobPhase, JobResult, JobResultData, JobState, PendingAggTask, PhaseTimings,
-    ProveParamsDto, WorkerId, WorkerState,
+    ProveParamsDto, TaskRecord, WorkerId, WorkerState,
 };
+use zisk_common::ZiskExecutorTime;
 
 use crate::Coordinator;
 
@@ -191,10 +192,22 @@ impl Coordinator {
             }
         };
 
+        let end_time = Utc::now();
         phase2_results.insert(
             worker_id.clone(),
-            JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
+            JobResult { success: execute_task_response.success, data, end_time },
         );
+
+        job.task_records.push(TaskRecord {
+            worker_id,
+            phase: JobPhase::Prove,
+            end_time,
+            step: 0,
+            compute_duration_ms: execute_task_response.compute_duration_ms,
+            executor_time: ZiskExecutorTime::default(),
+            proof_timings: execute_task_response.proof_timings,
+            records_origin_age_ms: execute_task_response.records_origin_age_ms,
+        });
 
         Ok(())
     }

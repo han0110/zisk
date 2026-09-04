@@ -3,7 +3,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_cluster_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
@@ -17,8 +17,8 @@ use zisk_common::{
 };
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
-    Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder, ProverEngine, ZiskBackend,
-    ZiskProver,
+    Asm, AsmOptions, BackendProverOpts, Emu, ProofTiming, ProverClientBuilder, ProverEngine,
+    ZiskBackend, ZiskProver,
 };
 
 use crate::stream_ordering::StreamOrderingActor;
@@ -126,6 +126,12 @@ pub enum ComputationResult {
             Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64, StatsCostPerType)>,
         /// When the originating task was received.
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+        /// Wall time of the proofman phase call, excluding the input load, in milliseconds.
+        compute_duration_ms: u64,
+        /// Per-proof spans, offset from the recorder origin.
+        proof_timings: Vec<ProofTiming>,
+        /// Age of the recorder origin when the records were taken, in milliseconds.
+        records_origin_age_ms: u64,
     },
     /// Partial proofs produced by the prove phase.
     Proofs {
@@ -135,6 +141,12 @@ pub enum ComputationResult {
         success: bool,
         /// The per-airgroup partial proofs on success.
         result: Result<Vec<AggProofs>>,
+        /// Wall time of the proofman phase call, excluding the input load, in milliseconds.
+        compute_duration_ms: u64,
+        /// Per-proof spans, offset from the recorder origin.
+        proof_timings: Vec<ProofTiming>,
+        /// Age of the recorder origin when the records were taken, in milliseconds.
+        records_origin_age_ms: u64,
     },
     /// Aggregated proof produced by the aggregate phase.
     AggProof {
@@ -150,6 +162,12 @@ pub enum ComputationResult {
         proof_type: ProofKind,
         /// Number of AIR instances (carried through for reporting).
         instances: u64,
+        /// Wall time of the proofman phase call, excluding the input load, in milliseconds.
+        compute_duration_ms: u64,
+        /// Per-proof spans, offset from the recorder origin.
+        proof_timings: Vec<ProofTiming>,
+        /// Age of the recorder origin when the records were taken, in milliseconds.
+        records_origin_age_ms: u64,
     },
     /// Recurser setup or prove result. The blocking handler builds
     /// the full ack (`SetupAggregationProgramAck` / `RunAggregateProofsAck`)
@@ -1002,6 +1020,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         options,
                     );
 
+                    let (proof_timings, records_origin_age_ms) = prover.take_proof_records();
+
                     let (witness_info, zisk_execution_time) = prover
                         .get_execution_info()
                         .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
@@ -1015,7 +1035,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     drop(guard);
 
                     let computation = match result {
-                        Ok(data) => ComputationResult::Contribution {
+                        Ok((data, compute_duration_ms)) => ComputationResult::Contribution {
                             job_id: job_id.clone(),
                             success: true,
                             result: Ok((
@@ -1026,6 +1046,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 cost_per_type,
                             )),
                             task_received_time,
+                            compute_duration_ms,
+                            proof_timings,
+                            records_origin_age_ms,
                         },
                         Err(error) => {
                             error!("Contribution computation failed for {job_id}: {error}");
@@ -1034,6 +1057,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 success: false,
                                 result: Err(error),
                                 task_received_time,
+                                compute_duration_ms: 0,
+                                proof_timings: Vec::new(),
+                                records_origin_age_ms: 0,
                             }
                         }
                     };
@@ -1047,6 +1073,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         success: false,
                         result: Err(anyhow::anyhow!("contribution task panicked")),
                         task_received_time,
+                        compute_duration_ms: 0,
+                        proof_timings: Vec::new(),
+                        records_origin_age_ms: 0,
                     });
                 },
             );
@@ -1174,7 +1203,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         hints_source: HintsSourceDto,
         partition_info: PartitionInfo,
         options: ProofOptions,
-    ) -> Result<Vec<ContributionsInfo>> {
+    ) -> Result<(Vec<ContributionsInfo>, u64)> {
         let phase = proofman::ProvePhase::Contributions;
 
         let stdin = match input_source {
@@ -1211,6 +1240,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             )?;
         }
 
+        let compute_start = Instant::now();
         let challenge = match prover.prove_phase(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Contributions(challenge)) => {
                 info!("Contribution computation successful for {job_id}");
@@ -1228,7 +1258,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         };
 
-        Ok(challenge)
+        Ok((challenge, compute_start.elapsed().as_millis() as u64))
     }
 
     /// Run the execute-only phase synchronously and return
@@ -1394,11 +1424,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     let result =
                         Self::execute_prove_task(job_id.clone(), &prover, phase_inputs, options);
 
+                    let (proof_timings, records_origin_age_ms) = prover.take_proof_records();
+
                     let computation = match result {
-                        Ok(data) => ComputationResult::Proofs {
+                        Ok((data, compute_duration_ms)) => ComputationResult::Proofs {
                             job_id: job_id.clone(),
                             success: true,
                             result: Ok(data),
+                            compute_duration_ms,
+                            proof_timings,
+                            records_origin_age_ms,
                         },
                         Err(error) => {
                             error!("Prove computation failed for {job_id}: {error}");
@@ -1406,6 +1441,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 job_id: job_id.clone(),
                                 success: false,
                                 result: Err(error),
+                                compute_duration_ms: 0,
+                                proof_timings: Vec::new(),
+                                records_origin_age_ms: 0,
                             }
                         }
                     };
@@ -1414,10 +1452,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     }
                 },
                 || {
+                    // Discard the records so they cannot leak into the next take.
+                    let _ = prover.take_proof_records();
                     let _ = tx_panic.send_computation(ComputationResult::Proofs {
                         job_id: job_id_panic,
                         success: false,
                         result: Err(anyhow::anyhow!("prove task panicked")),
+                        compute_duration_ms: 0,
+                        proof_timings: Vec::new(),
+                        records_origin_age_ms: 0,
                     });
                 },
             );
@@ -1425,15 +1468,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     /// Run the internal prove phase synchronously and return this worker's
-    /// partial proofs.
+    /// partial proofs with the wall time of the call.
     pub fn execute_prove_task(
         job_id: JobId,
         prover: &ZiskProver<T>,
         phase_inputs: ProvePhaseInputs,
         options: ProofOptions,
-    ) -> Result<Vec<AggProofs>> {
+    ) -> Result<(Vec<AggProofs>, u64)> {
         let world_rank = prover.world_rank();
 
+        let compute_start = Instant::now();
         let proof = match prover.prove_phase(phase_inputs, options, proofman::ProvePhase::Internal)
         {
             Ok(proofman::ProvePhaseResult::Internal(proof)) => {
@@ -1452,7 +1496,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         };
 
-        Ok(proof)
+        Ok((proof, compute_start.elapsed().as_millis() as u64))
     }
 
     /// Register peer worker proofs and spawn the join/aggregate computation,
@@ -1487,6 +1531,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             // called on an async runtime thread. (This previously ran inline on the
             // event-loop thread, so a registration failure crashed the loop.)
             if let Err(error) = prover.register_worker_proofs(agg_proofs_register) {
+                // Discard the records so they cannot leak into the next take.
+                let _ = prover.take_proof_records();
                 if tx
                     .send_computation(ComputationResult::AggProof {
                         job_id,
@@ -1495,6 +1541,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         executed_steps,
                         proof_type: agg_params.proof_type,
                         instances,
+                        compute_duration_ms: 0,
+                        proof_timings: Vec::new(),
+                        records_origin_age_ms: 0,
                     })
                     .is_err()
                 {
@@ -1515,12 +1564,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 })
                 .collect();
 
+            let compute_start = Instant::now();
             let result = prover.join_worker_proofs(
                 agg_proofs,
                 agg_params.last_proof,
                 agg_params.final_proof,
                 &options,
             );
+            let compute_duration_ms = compute_start.elapsed().as_millis() as u64;
+            let (proof_timings, records_origin_age_ms) = prover.take_proof_records();
 
             match result {
                 Ok(data) => {
@@ -1536,6 +1588,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                             executed_steps,
                             proof_type: agg_params.proof_type,
                             instances,
+                            compute_duration_ms,
+                            proof_timings,
+                            records_origin_age_ms,
                         })
                         .is_err()
                     {
@@ -1552,6 +1607,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                             executed_steps,
                             proof_type: agg_params.proof_type,
                             instances,
+                            compute_duration_ms,
+                            proof_timings,
+                            records_origin_age_ms,
                         })
                         .is_err()
                     {

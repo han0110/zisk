@@ -4,7 +4,8 @@ use crate::GuestProgram;
 use crate::{
     check_paths_exist,
     prover::{ProverBackend, ProverEngine, ZiskBackend, ZiskProver},
-    ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
+    ExecuteOutput, ProofTiming, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult,
+    ZiskPhaseResult,
 };
 use crate::{ensure_program_vk, get_rom_bin_path, BackendProverOpts};
 use proofman::{
@@ -173,6 +174,10 @@ impl ProverEngine for EmuProver {
 
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
         self.core_prover.backend.get_execution_info()
+    }
+
+    fn take_proof_records(&self) -> (Vec<ProofTiming>, u64) {
+        self.core_prover.backend.take_proof_records()
     }
 
     fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {

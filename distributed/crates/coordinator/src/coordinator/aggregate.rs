@@ -10,9 +10,9 @@ use tracing::{error, info, warn};
 use zisk_cluster_common::{
     AggParamsDto, AggProofData, CoordinatorMessageDto, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, Job,
-    JobId, JobPhase, JobResultData, JobState, ProofStarkDto, WorkerId, WorkerState,
+    JobId, JobPhase, JobResultData, JobState, ProofStarkDto, TaskRecord, WorkerId, WorkerState,
 };
-use zisk_common::{Proof, ProofKind};
+use zisk_common::{Proof, ProofKind, ZiskExecutorTime};
 
 use crate::Coordinator;
 
@@ -118,6 +118,19 @@ impl Coordinator {
                  aggregation task is an intermediate step"
             )));
         }
+
+        let recurse_steps =
+            job.task_records.iter().filter(|record| record.phase == JobPhase::Recurse).count();
+        job.task_records.push(TaskRecord {
+            worker_id: agg_worker_id.clone(),
+            phase: JobPhase::Recurse,
+            end_time: Utc::now(),
+            step: recurse_steps as u32 + 1,
+            compute_duration_ms: execute_task_response.compute_duration_ms,
+            executor_time: ZiskExecutorTime::default(),
+            proof_timings: execute_task_response.proof_timings,
+            records_origin_age_ms: execute_task_response.records_origin_age_ms,
+        });
 
         // Clear the in-flight slot and dispatch the next queued task, if any.
         if is_intermediate_ack {

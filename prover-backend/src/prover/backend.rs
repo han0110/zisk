@@ -1,14 +1,15 @@
 use crate::create_debug_info;
 use crate::BackendProverOpts;
 use crate::{
-    ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
+    ExecuteOutput, ProofTiming, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult,
+    ZiskPhaseResult,
 };
 use anyhow::Result;
 use colored::Colorize;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
-    SnarkProtocol, SnarkWrapper, WitnessInfo,
+    SnarkProtocol, SnarkWrapper, WitnessInfo, RECORD_KIND_PER_INSTANCE,
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_fields::Goldilocks;
@@ -619,6 +620,37 @@ impl ProverBackend {
         let witness_info = self.proofman.get_witness_info();
         let (execution_result, _) = self.executor.get_execution_result();
         Ok((witness_info, execution_result.executor_time))
+    }
+
+    /// The proof spans closed since the previous call, with the age of the origin
+    /// they are offset from. The AIR name resolves here, where the global info
+    /// lives. Only a per-instance record names an AIR, because a root step of the
+    /// contributions phase, a fold and the two final proofs carry a placeholder
+    /// AIR id.
+    pub(crate) fn take_proof_records(&self) -> (Vec<ProofTiming>, u64) {
+        let global_info = &self.proofman.get_wcm().get_pctx().global_info;
+        let (records, records_origin_age_ms) = self.proofman.take_proof_records();
+        let timings = records
+            .into_iter()
+            .map(|record| ProofTiming {
+                id: record.id as u32,
+                proof_type: record.proof_type as u32,
+                airgroup_id: record.airgroup_id as u32,
+                air_name: if RECORD_KIND_PER_INSTANCE.contains(&record.proof_type) {
+                    global_info.get_air_name(record.airgroup_id, record.air_id).to_string()
+                } else {
+                    String::new()
+                },
+                start_offset_ms: record.start_ms,
+                end_offset_ms: record.end_ms,
+                breakdown_ms: if record.breakdown_ms.iter().any(|&ms| ms != 0) {
+                    record.breakdown_ms.to_vec()
+                } else {
+                    Vec::new()
+                },
+            })
+            .collect();
+        (timings, records_origin_age_ms)
     }
 
     pub(crate) fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {

@@ -17,7 +17,9 @@ use std::{
 use tracing::error;
 use zisk_common::{Proof, StatsCostPerType, ZiskExecutorTime};
 
-use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, ProofKind};
+use crate::{
+    HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, ProofKind, ProofTimingDto,
+};
 
 /// Job ID wrapper for type safety
 #[derive(
@@ -347,6 +349,8 @@ pub struct Job {
     pub agg_task_inflight: Option<PendingAggTask>,
     /// Queued aggregation tasks awaiting dispatch.
     pub agg_task_queue: VecDeque<PendingAggTask>,
+    /// Per-task timings, in the order the coordinator received them.
+    pub task_records: Vec<TaskRecord>,
 }
 
 impl Job {
@@ -395,6 +399,7 @@ impl Job {
             proof_type,
             agg_task_inflight: None,
             agg_task_queue: VecDeque::new(),
+            task_records: Vec::new(),
         }
     }
 
@@ -475,6 +480,7 @@ impl Job {
         self.challenges = None;
         self.agg_task_inflight = None;
         self.agg_task_queue.clear();
+        self.task_records.clear();
     }
 }
 
@@ -579,6 +585,27 @@ pub enum JobResultData {
     Challenges(ContributionsResult),
     /// Partial proofs from the prove phase.
     AggProofs(Vec<AggProofData>),
+}
+
+/// One worker task the coordinator received, stamped on the coordinator clock.
+#[derive(Debug, Clone)]
+pub struct TaskRecord {
+    /// The worker that ran the task.
+    pub worker_id: WorkerId,
+    /// The phase the task belongs to.
+    pub phase: JobPhase,
+    /// When the coordinator received the result.
+    pub end_time: DateTime<Utc>,
+    /// Ordinal of the task within its phase, starting at one for `Recurse`.
+    pub step: u32,
+    /// Wall time of the proofman phase call, excluding the input load, in milliseconds.
+    pub compute_duration_ms: u64,
+    /// Executor timing, empty outside the contributions phase.
+    pub executor_time: ZiskExecutorTime,
+    /// Per-proof spans, offset from the recorder origin.
+    pub proof_timings: Vec<ProofTimingDto>,
+    /// Age of the recorder origin when the worker took the records, in milliseconds.
+    pub records_origin_age_ms: u64,
 }
 
 /// A worker's result for one phase of a job.

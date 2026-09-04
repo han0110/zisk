@@ -649,6 +649,34 @@ pub struct ExecuteTaskResponseDto {
     pub result_data: Option<ExecuteTaskResponseResultDataDto>,
     /// Whether the worker is currently in recovery.
     pub worker_in_recovery: bool,
+    /// Wall time of the proofman phase call, excluding the input load, in milliseconds.
+    pub compute_duration_ms: u64,
+    /// Per-proof spans, offset from the recorder origin.
+    pub proof_timings: Vec<ProofTimingDto>,
+    /// Age of the recorder origin when the worker took the records, in milliseconds.
+    /// The consumer anchors the origin at the coordinator receipt instant, so the
+    /// reply latency shifts every span later.
+    pub records_origin_age_ms: u64,
+}
+
+/// One proof proofman produced, offset from the recorder origin of the response.
+#[derive(Debug, Clone)]
+pub struct ProofTimingDto {
+    /// The instance id, the fold index of a fold record, or zero for a root step.
+    pub id: u32,
+    /// The proofman record kind, one of the `ProofType` variants or a host step kind past them.
+    pub proof_type: u32,
+    /// The airgroup the proof belongs to.
+    pub airgroup_id: u32,
+    /// The AIR name, empty for a root step of the contributions phase, a fold and the
+    /// two final proofs.
+    pub air_name: String,
+    /// Start of the proof, offset from the recorder origin, in milliseconds.
+    pub start_offset_ms: u32,
+    /// End of the proof, offset from the recorder origin, in milliseconds.
+    pub end_offset_ms: u32,
+    /// The proof sections, in milliseconds, empty when the proof carried no timing.
+    pub breakdown_ms: Vec<u32>,
 }
 
 /// Result payload of a contribution task.

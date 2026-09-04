@@ -15,7 +15,8 @@ use zisk_cluster_common::{
     ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto,
     ExecuteTaskResponseResultDataDto, ExecutionResult, HintsModeDto, HintsSourceDto,
     InputSourceDto, InputStreamDataDto, InputsModeDto, Job, JobId, JobPhase, JobResult,
-    JobResultData, JobState, StreamMessageKind, WorkerId, WorkerState, ZiskExecutorTimeDto,
+    JobResultData, JobState, StreamMessageKind, TaskRecord, WorkerId, WorkerState,
+    ZiskExecutorTimeDto,
 };
 use zisk_common::io::{StreamRead, StreamSource, ZiskStream};
 use zisk_common::AsmExecutionInfo;
@@ -698,13 +699,28 @@ impl Coordinator {
         }
 
         let data = self.extract_challenges_data(execute_task_response.result_data)?;
-        let instances =
-            if let JobResultData::Challenges(ref contrib) = data { contrib.instances } else { 0 };
+        let (instances, executor_time) = if let JobResultData::Challenges(ref contrib) = data {
+            (contrib.instances, contrib.zisk_executor_time.clone())
+        } else {
+            (0, ZiskExecutorTime::default())
+        };
 
+        let end_time = Utc::now();
         contributions_results.insert(
             worker_id.clone(),
-            JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
+            JobResult { success: execute_task_response.success, data, end_time },
         );
+
+        job.task_records.push(TaskRecord {
+            worker_id,
+            phase: JobPhase::Contributions,
+            end_time,
+            step: 0,
+            compute_duration_ms: execute_task_response.compute_duration_ms,
+            executor_time,
+            proof_timings: execute_task_response.proof_timings,
+            records_origin_age_ms: execute_task_response.records_origin_age_ms,
+        });
 
         Ok(instances)
     }

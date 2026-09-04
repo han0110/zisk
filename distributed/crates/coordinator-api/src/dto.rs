@@ -269,6 +269,51 @@ pub struct DomainExecutionStats {
     pub executor_time: DomainExecutorTime,
     /// Per-AIR instance plan (execute jobs only; empty otherwise).
     pub plan: Vec<DomainAirInstanceCount>,
+    /// Start of the contributions phase, the origin of every task timing.
+    pub proof_start: Option<DateTime<Utc>>,
+    /// Per-task timings, in the order the coordinator received them.
+    pub tasks: Vec<DomainTaskTiming>,
+}
+
+/// One worker task, stamped on the coordinator clock at receipt.
+#[derive(Debug, Clone)]
+pub struct DomainTaskTiming {
+    /// The worker that ran the task.
+    pub worker_id: String,
+    /// The phase the task belongs to.
+    pub phase: DomainJobPhase,
+    /// When the coordinator received the result.
+    pub completed_at: Option<DateTime<Utc>>,
+    /// Wall time of the proofman phase call, excluding the input load, in milliseconds.
+    pub compute_duration_ms: u64,
+    /// Executor timing, empty outside the contributions phase.
+    pub executor_time: DomainExecutorTime,
+    /// Ordinal of the task within its phase, from one for `Recurse` and zero elsewhere.
+    pub step: u32,
+    /// Per-proof spans, offset from the recorder origin.
+    pub proof_timings: Vec<DomainProofTiming>,
+    /// Age of the recorder origin when the worker took the records, in milliseconds.
+    pub records_origin_age_ms: u64,
+}
+
+/// One proof proofman produced, offset from the recorder origin of the response.
+#[derive(Debug, Clone)]
+pub struct DomainProofTiming {
+    /// The instance id, the fold index of a fold record, or zero for a root step.
+    pub id: u32,
+    /// The proofman record kind, one of the `ProofType` variants or a host step kind past them.
+    pub proof_type: u32,
+    /// The airgroup the proof belongs to.
+    pub airgroup_id: u32,
+    /// The AIR name, empty for a root step of the contributions phase, a fold and the
+    /// two final proofs.
+    pub air_name: String,
+    /// Start of the proof, offset from the recorder origin, in milliseconds.
+    pub start_offset_ms: u32,
+    /// End of the proof, offset from the recorder origin, in milliseconds.
+    pub end_offset_ms: u32,
+    /// The proof sections, in milliseconds, empty when the proof carried no timing.
+    pub breakdown_ms: Vec<u32>,
 }
 
 /// Per-AIR planned instance count; the AIR name is derived from the ids by the consumer.

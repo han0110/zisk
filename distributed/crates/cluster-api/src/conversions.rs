@@ -495,6 +495,21 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
             },
             result_data,
             worker_in_recovery: response.worker_in_recovery,
+            compute_duration_ms: response.compute_duration_ms,
+            proof_timings: response
+                .proof_timings
+                .into_iter()
+                .map(|timing| ProofTimingDto {
+                    id: timing.id,
+                    proof_type: timing.proof_type,
+                    airgroup_id: timing.airgroup_id,
+                    air_name: timing.air_name,
+                    start_offset_ms: timing.start_offset_ms,
+                    end_offset_ms: timing.end_offset_ms,
+                    breakdown_ms: timing.breakdown_ms,
+                })
+                .collect(),
+            records_origin_age_ms: response.records_origin_age_ms,
         }
     }
 }
