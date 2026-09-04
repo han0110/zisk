@@ -17,6 +17,7 @@ use std::{
 use tracing::error;
 use zisk_common::{Proof, StatsCostPerType, ZiskExecutorTime};
 
+use crate::ProofTimingDto;
 use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, ProofKind};
 
 /// Job ID wrapper for type safety
@@ -348,6 +349,10 @@ pub struct Job {
     pub agg_task_inflight: Option<PendingAggTask>,
     /// Queued aggregation tasks awaiting dispatch.
     pub agg_task_queue: VecDeque<PendingAggTask>,
+    #[allow(missing_docs)]
+    pub task_records: Vec<TaskRecord>,
+    #[allow(missing_docs)]
+    pub task_starts: HashMap<WorkerId, u64>,
 }
 
 impl Job {
@@ -396,6 +401,8 @@ impl Job {
             proof_type,
             agg_task_inflight: None,
             agg_task_queue: VecDeque::new(),
+            task_records: Vec::new(),
+            task_starts: HashMap::new(),
         }
     }
 
@@ -476,6 +483,8 @@ impl Job {
         self.challenges = None;
         self.agg_task_inflight = None;
         self.agg_task_queue.clear();
+        self.task_records.clear();
+        self.task_starts.clear();
     }
 }
 
@@ -580,6 +589,21 @@ pub enum JobResultData {
     Challenges(ContributionsResult),
     /// Partial proofs from the prove phase.
     AggProofs(Vec<AggProofData>),
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Clone)]
+pub struct TaskRecord {
+    pub worker_id: WorkerId,
+    pub phase: JobPhase,
+    pub end_time: DateTime<Utc>,
+    pub step: u32,
+    pub compute_duration_ms: u64,
+    pub executor_time: ZiskExecutorTime,
+    pub proof_timings: Vec<ProofTimingDto>,
+    pub coordinator_start: u64,
+    pub worker_start: u64,
+    pub worker_end: u64,
 }
 
 /// A worker's result for one phase of a job.

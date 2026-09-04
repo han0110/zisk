@@ -281,3 +281,22 @@ tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 signal-hook = "0.4"
 signal-hook-tokio = { version = "0.4", features = ["futures-v0_3"] }
 criterion = { version = "0.8", features = ["html_reports"] }
+
+# Proofman from the fork branch patch/distributed/v1.3.0-alpha.
+[patch.crates-io]
+pil2-pilout           = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+pil2-stark-recurser   = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+pil2-stark-setup      = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+pil2-std-lib          = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman              = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman-common       = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman-curves       = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman-exps-codegen = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman-fields       = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman-hints        = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman-macros       = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman-starks-lib-c = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman-starks-src   = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman-util         = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman-verifier     = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }
+proofman-witness      = { git = "https://github.com/han0110/pil2-proofman", rev = "3b96252713fb99c3c6aed24384bcf2d168e70f02" }

@@ -10,6 +10,7 @@ use colored::Colorize;
 use proofman::{ContributionsInfo, WitnessInfo};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tracing::{error, info, warn};
+use zisk_cluster_common::TaskRecord;
 use zisk_cluster_common::{
     ChallengesDto, ContributionParamsDto, ContributionsResult, CoordinatorMessageDto,
     ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto,
@@ -450,6 +451,8 @@ impl Coordinator {
         let challenges_dto = self.collect_challenges_dto(&job);
 
         let active_workers = self.select_workers_for_execution(&job)?;
+        let now = Utc::now().timestamp_millis() as u64;
+        job.task_starts.extend(active_workers.iter().map(|worker_id| (worker_id.clone(), now)));
 
         drop(job); // Release jobs lock early
 
@@ -700,11 +703,29 @@ impl Coordinator {
         let data = self.extract_challenges_data(execute_task_response.result_data)?;
         let instances =
             if let JobResultData::Challenges(ref contrib) = data { contrib.instances } else { 0 };
+        let executor_time = match &data {
+            JobResultData::Challenges(contrib) => contrib.zisk_executor_time.clone(),
+            _ => ZiskExecutorTime::default(),
+        };
 
         contributions_results.insert(
             worker_id.clone(),
             JobResult { success: execute_task_response.success, data, end_time: Utc::now() },
         );
+
+        let coordinator_start = job.task_starts.remove(&worker_id).unwrap_or_default();
+        job.task_records.push(TaskRecord {
+            worker_id,
+            phase: JobPhase::Contributions,
+            end_time: Utc::now(),
+            step: 0,
+            compute_duration_ms: execute_task_response.timing.compute_duration_ms,
+            executor_time,
+            proof_timings: execute_task_response.timing.proof_timings,
+            coordinator_start,
+            worker_start: execute_task_response.timing.worker_start,
+            worker_end: execute_task_response.timing.worker_end,
+        });
 
         Ok(instances)
     }

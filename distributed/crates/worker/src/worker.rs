@@ -4,8 +4,10 @@ use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
+use zisk_cluster_common::TaskTimingDto;
 use zisk_cluster_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_cluster_common::{ContributionsMessage, ProveMessage};
 use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
@@ -125,6 +127,8 @@ pub enum ComputationResult {
             Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64, StatsCostPerType)>,
         /// When the originating task was received.
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+        #[allow(missing_docs)]
+        timing: TaskTimingDto,
     },
     /// Partial proofs produced by the prove phase.
     Proofs {
@@ -134,6 +138,8 @@ pub enum ComputationResult {
         success: bool,
         /// The per-airgroup partial proofs on success.
         result: Result<Vec<AggProofs>>,
+        #[allow(missing_docs)]
+        timing: TaskTimingDto,
     },
     /// Aggregated proof produced by the aggregate phase.
     AggProof {
@@ -149,6 +155,8 @@ pub enum ComputationResult {
         proof_type: ProofKind,
         /// Number of AIR instances (carried through for reporting).
         instances: u64,
+        #[allow(missing_docs)]
+        timing: TaskTimingDto,
     },
     /// Recurser setup or prove result. The blocking handler builds
     /// the full ack (`SetupAggregationProgramAck` / `RunAggregateProofsAck`)
@@ -1041,6 +1049,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         options,
                     );
 
+                    let timing = prover.take_proof_records();
+
                     let (witness_info, zisk_execution_time) = prover
                         .get_execution_info()
                         .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
@@ -1054,7 +1064,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     drop(guard);
 
                     let computation = match result {
-                        Ok(data) => ComputationResult::Contribution {
+                        Ok((data, compute_duration_ms)) => ComputationResult::Contribution {
                             job_id: job_id.clone(),
                             success: true,
                             result: Ok((
@@ -1065,6 +1075,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 cost_per_type,
                             )),
                             task_received_time,
+                            timing: TaskTimingDto { compute_duration_ms, ..timing },
                         },
                         Err(error) => {
                             error!("Contribution computation failed for {job_id}: {error}");
@@ -1073,6 +1084,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 success: false,
                                 result: Err(error),
                                 task_received_time,
+                                timing: TaskTimingDto::default(),
                             }
                         }
                     };
@@ -1081,11 +1093,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     }
                 },
                 || {
+                    let _ = prover.take_proof_records();
                     let _ = tx_panic.send_computation(ComputationResult::Contribution {
                         job_id: job_id_panic,
                         success: false,
                         result: Err(anyhow::anyhow!("contribution task panicked")),
                         task_received_time,
+                        timing: TaskTimingDto::default(),
                     });
                 },
             );
@@ -1213,7 +1227,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         hints_source: HintsSourceDto,
         partition_info: PartitionInfo,
         options: ProofOptions,
-    ) -> Result<Vec<ContributionsInfo>> {
+    ) -> Result<(Vec<ContributionsInfo>, u64)> {
         let phase = proofman::ProvePhase::Contributions;
 
         let stdin = match input_source {
@@ -1250,6 +1264,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             )?;
         }
 
+        let compute_start = Instant::now();
         let challenge = match prover.prove_phase(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Contributions(challenge)) => {
                 info!("Contribution computation successful for {job_id}");
@@ -1267,7 +1282,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         };
 
-        Ok(challenge)
+        Ok((challenge, compute_start.elapsed().as_millis() as u64))
     }
 
     /// Run the execute-only phase synchronously and return
@@ -1430,14 +1445,18 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     info!("Computing Prove for {job_id}");
 
                     let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
+                    let compute_start = Instant::now();
                     let result =
                         Self::execute_prove_task(job_id.clone(), &prover, phase_inputs, options);
+                    let compute_duration_ms = compute_start.elapsed().as_millis() as u64;
+                    let timing = prover.take_proof_records();
 
                     let computation = match result {
                         Ok(data) => ComputationResult::Proofs {
                             job_id: job_id.clone(),
                             success: true,
                             result: Ok(data),
+                            timing: TaskTimingDto { compute_duration_ms, ..timing },
                         },
                         Err(error) => {
                             error!("Prove computation failed for {job_id}: {error}");
@@ -1445,6 +1464,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 job_id: job_id.clone(),
                                 success: false,
                                 result: Err(error),
+                                timing: TaskTimingDto::default(),
                             }
                         }
                     };
@@ -1453,10 +1473,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     }
                 },
                 || {
+                    let _ = prover.take_proof_records();
                     let _ = tx_panic.send_computation(ComputationResult::Proofs {
                         job_id: job_id_panic,
                         success: false,
                         result: Err(anyhow::anyhow!("prove task panicked")),
+                        timing: TaskTimingDto::default(),
                     });
                 },
             );
@@ -1526,6 +1548,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             // called on an async runtime thread. (This previously ran inline on the
             // event-loop thread, so a registration failure crashed the loop.)
             if let Err(error) = prover.register_worker_proofs(agg_proofs_register) {
+                let _ = prover.take_proof_records();
                 if tx
                     .send_computation(ComputationResult::AggProof {
                         job_id,
@@ -1534,6 +1557,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         executed_steps,
                         proof_type: agg_params.proof_type,
                         instances,
+                        timing: TaskTimingDto::default(),
                     })
                     .is_err()
                 {
@@ -1554,12 +1578,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 })
                 .collect();
 
+            let compute_start = Instant::now();
             let result = prover.join_worker_proofs(
                 agg_proofs,
                 agg_params.last_proof,
                 agg_params.final_proof,
                 &options,
             );
+            let compute_duration_ms = compute_start.elapsed().as_millis() as u64;
+            let timing = TaskTimingDto { compute_duration_ms, ..prover.take_proof_records() };
 
             match result {
                 Ok(data) => {
@@ -1575,6 +1602,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                             executed_steps,
                             proof_type: agg_params.proof_type,
                             instances,
+                            timing,
                         })
                         .is_err()
                     {
@@ -1591,6 +1619,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                             executed_steps,
                             proof_type: agg_params.proof_type,
                             instances,
+                            timing,
                         })
                         .is_err()
                     {

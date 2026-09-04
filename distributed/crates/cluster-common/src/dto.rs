@@ -649,6 +649,29 @@ pub struct ExecuteTaskResponseDto {
     pub result_data: Option<ExecuteTaskResponseResultDataDto>,
     /// Whether the worker is currently in recovery.
     pub worker_in_recovery: bool,
+    #[allow(missing_docs)]
+    pub timing: TaskTimingDto,
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Clone, Default)]
+pub struct TaskTimingDto {
+    pub compute_duration_ms: u64,
+    pub proof_timings: Vec<ProofTimingDto>,
+    pub worker_start: u64,
+    pub worker_end: u64,
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Clone)]
+pub struct ProofTimingDto {
+    pub id: u32,
+    pub proof_type: u32,
+    pub airgroup_id: u32,
+    pub air_name: String,
+    pub start: u64,
+    pub end: u64,
+    pub breakdown_ms: Vec<u32>,
 }
 
 /// Result payload of a contribution task.

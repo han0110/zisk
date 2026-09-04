@@ -15,6 +15,7 @@ use tracing::{error, info, warn};
 use zisk_cluster_api::contribution_params::InputSource;
 use zisk_cluster_api::execute_task_response::ResultData;
 use zisk_cluster_api::*;
+use zisk_cluster_common::TaskTimingDto;
 use zisk_cluster_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, JobPhase, ProofKind,
     StreamDataDto, WorkerState,
@@ -152,12 +153,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeMpi<T> {
 pub struct WorkerNodeGrpc<T: ZiskBackend + 'static> {
     worker_config: WorkerServiceConfig,
     worker: Worker<T>,
+    worker_start: u64,
 }
 
 impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// Wrap a worker as the rank-0 gRPC node with the given config.
     pub async fn new(worker_config: WorkerServiceConfig, worker: Worker<T>) -> Result<Self> {
-        Ok(Self { worker_config, worker })
+        Ok(Self { worker_config, worker, worker_start: 0 })
     }
 
     /// This node's global MPI rank.
@@ -415,7 +417,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 )
                 .await
             }
-            ComputationResult::Contribution { job_id, success, result, task_received_time } => {
+            ComputationResult::Contribution {
+                job_id,
+                success,
+                result,
+                task_received_time,
+                timing,
+            } => {
                 self.send_partial_contribution(
                     job_id,
                     success,
@@ -423,11 +431,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     message_sender,
                     loop_tx,
                     task_received_time,
+                    timing,
                 )
                 .await
             }
-            ComputationResult::Proofs { job_id, success, result } => {
-                self.send_proof(job_id, success, result, message_sender, loop_tx).await
+            ComputationResult::Proofs { job_id, success, result, timing } => {
+                self.send_proof(job_id, success, result, message_sender, loop_tx, timing).await
             }
             ComputationResult::AggProof {
                 job_id,
@@ -436,6 +445,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 executed_steps,
                 proof_type,
                 instances,
+                timing,
             } => {
                 self.send_recurser(
                     job_id,
@@ -445,6 +455,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     executed_steps,
                     proof_type,
                     instances,
+                    timing,
                 )
                 .await
             }
@@ -558,6 +569,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         loop_tx: &LoopEventSender,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+        timing: TaskTimingDto,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
@@ -642,6 +654,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data: result_data_msg,
                 error_message,
                 worker_in_recovery,
+                timing: self.task_timing(timing),
             })),
         };
 
@@ -681,6 +694,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
         }
+
+        let _ = self.worker.prover_arc().take_proof_records();
 
         let (result_data, error_message) = match result {
             Ok(data) => {
@@ -763,6 +778,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data: result_data_msg,
                 error_message,
                 worker_in_recovery,
+                timing: None,
             })),
         };
 
@@ -785,6 +801,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         result: Result<Vec<AggProofs>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         loop_tx: &LoopEventSender,
+        timing: TaskTimingDto,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
@@ -832,6 +849,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data: Some(ResultData::Proofs(ProofList { proofs: result_data })),
                 error_message,
                 worker_in_recovery,
+                timing: self.task_timing(timing),
             })),
         };
 
@@ -857,6 +875,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         executed_steps: u64,
         proof_type: ProofKind,
         instances: u64,
+        timing: TaskTimingDto,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
@@ -990,6 +1009,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data,
                 error_message,
                 worker_in_recovery: false,
+                timing: self.task_timing(timing),
             })),
         };
 
@@ -1003,6 +1023,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         Ok(())
+    }
+
+    fn task_timing(&self, timing: TaskTimingDto) -> Option<TaskTiming> {
+        let worker_end = chrono::Utc::now().timestamp_millis() as u64;
+        Some(TaskTimingDto { worker_start: self.worker_start, worker_end, ..timing }.into())
     }
 
     /// `true` when this failure should drive recovery for `job_id`. Returns
@@ -1257,6 +1282,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
             }
             coordinator_message::Payload::ExecuteTask(request) => {
+                self.worker_start = chrono::Utc::now().timestamp_millis() as u64;
                 let job_id = request.job_id.clone();
                 let task_type_int = request.task_type;
                 let dispatch = match TaskType::try_from(task_type_int) {
@@ -1286,6 +1312,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                 result_data: None,
                                 error_message: e.to_string(),
                                 worker_in_recovery: false,
+                                timing: None,
                             },
                         )),
                     };
@@ -2309,6 +2336,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data,
                 error_message,
                 worker_in_recovery: false,
+                timing: None,
             })),
         };
 
