@@ -59,6 +59,11 @@ impl EmulatorAsm {
         self.transport.set_asm_resources(asm_resources)
     }
 
+    /// Drop the installed [`AsmResources`].
+    pub fn clear_asm_resources(&self) -> ExecutorResult<()> {
+        self.transport.clear_asm_resources()
+    }
+
     /// Reset the hints stream pipeline and the input shmem writer.
     pub fn reset(&self) -> ExecutorResult<()> {
         self.transport.reset()

@@ -118,6 +118,20 @@ impl BackendArtifacts {
     }
 }
 
+impl Drop for BackendArtifacts {
+    // Runners hold the ASM services, so they end before the output does.
+    fn drop(&mut self) {
+        if let Self::Asm { mo, rh } = self {
+            if let Some(handle) = mo.take() {
+                let _ = handle.join();
+            }
+            if let Some(handle) = rh.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

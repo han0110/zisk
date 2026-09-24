@@ -74,13 +74,13 @@ pub(super) fn cleanup_stale() {
     }
 }
 
-/// Unlink every `/dev/shm/{shm_prefix}*` shmem segment and
+/// Unlink every `/dev/shm/{shm_prefix}*` shmem segment (none for `None`) and
 /// `/dev/shm/sem.{sem_prefix}*` semaphore. The C-side `server_cleanup`
 /// only unlinks if `delete_input_shm`/`delete_output_shm` flags are
 /// set — which the long-running ASM service children don't have — so
 /// the parent has to do it. Call after `stop_asm_services` so the
 /// children are already detached from the segments.
-pub(super) fn cleanup_prefix(shm_prefix: &str, sem_prefix: &str) {
+pub(super) fn cleanup_prefix(shm_prefix: Option<&str>, sem_prefix: &str) {
     let dev_shm = std::path::Path::new("/dev/shm");
     let entries = match std::fs::read_dir(dev_shm) {
         Ok(e) => e,
@@ -92,7 +92,7 @@ pub(super) fn cleanup_prefix(shm_prefix: &str, sem_prefix: &str) {
     let sem_marker = format!("sem.{}", sem_prefix);
     for entry in entries.flatten() {
         let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
-        if name.starts_with(shm_prefix) {
+        if shm_prefix.is_some_and(|shm_prefix| name.starts_with(shm_prefix)) {
             let _ = unlink_shmem(&name);
         } else if name.starts_with(&sem_marker) {
             unlink_sem_file(&name);
@@ -144,7 +144,7 @@ mod tests {
         let sem_backing = format!("/dev/shm/sem.{sem_prefix}_chunk_done");
         assert!(std::path::Path::new(&sem_backing).exists());
 
-        cleanup_prefix(&shm_prefix, &sem_prefix);
+        cleanup_prefix(Some(&shm_prefix), &sem_prefix);
 
         assert!(!shm_exists(&seg_a), "shmem segment should be unlinked");
         assert!(!shm_exists(&seg_b), "shmem segment should be unlinked");

@@ -44,6 +44,10 @@ impl EmulatorAsm {
         unsupported()
     }
 
+    pub fn clear_asm_resources(&self) -> ExecutorResult<()> {
+        unsupported()
+    }
+
     pub fn submit_hint_direct(&self, _: &[u64]) -> ExecutorResult<()> {
         unsupported()
     }
