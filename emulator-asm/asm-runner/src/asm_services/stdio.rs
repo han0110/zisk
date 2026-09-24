@@ -121,6 +121,12 @@ impl StdioService {
             .spawn()
             .with_context(|| format!("Failed to spawn stdio service {asm_service}"))?;
 
+        // Not in a `pre_exec` hook, which makes `spawn` fork this large process.
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        unsafe {
+            libc::setpriority(libc::PRIO_PROCESS, child.id(), -5);
+        }
+
         let stdin = child.stdin.take().context("Failed to open stdin for stdio service")?;
         let stdout = child.stdout.take().context("Failed to open stdout for stdio service")?;
         let mut stderr = child.stderr.take().context("Failed to open stderr for stdio service")?;

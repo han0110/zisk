@@ -65,17 +65,6 @@ impl AsmService {
         let binary_path = self.command_path_for(trimmed_path);
         tracing::debug!("Spawning ASM service {self} binary: {binary_path}");
         let mut command = Command::new(binary_path);
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            use std::os::unix::process::CommandExt;
-            unsafe {
-                command.pre_exec(|| {
-                    libc::setpriority(libc::PRIO_PROCESS, 0, -5);
-                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
-                    Ok(())
-                });
-            }
-        }
         options.apply_to_command(&mut command, self, shm_prefix, sem_prefix);
         command
     }
