@@ -19,6 +19,8 @@
 #include <netinet/tcp.h>
 #include <sys/file.h>
 #include <time.h>
+#include <signal.h>
+#include <sys/prctl.h>
 #include "constants.hpp"
 #include "emu.hpp"
 #include "asm_provided.hpp"
@@ -585,6 +587,9 @@ void stdio_server (void)
 
 int main(int argc, char *argv[])
 {
+    // Die with the parent thread, also during a wait for input or hints
+    prctl(PR_SET_PDEATHSIG, SIGKILL);
+
 #ifdef DEBUG
     // Start counting total execution time
     gettimeofday(&total_start_time, NULL);
