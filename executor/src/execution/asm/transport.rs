@@ -56,6 +56,12 @@ impl AsmTransport {
         Ok(())
     }
 
+    /// Drop the installed resources.
+    pub fn clear_asm_resources(&self) -> ExecutorResult<()> {
+        *self.asm_resources.write_or_poison("asm_resources")? = None;
+        Ok(())
+    }
+
     /// Clone the currently-installed `Arc<AsmResources>`, or err if
     /// the worker hasn't installed any yet.
     ///

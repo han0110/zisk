@@ -96,6 +96,8 @@ pub struct AsmProver {
     /// Tracks whether the currently registered program was set up emulator-only.
     /// When true, prove/verify_constraints/stats are rejected.
     current_emulator_only: AtomicBool,
+    /// Hash of the program whose ASM resources the executor holds.
+    current_program: RwLock<Option<String>>,
 }
 
 impl AsmProver {
@@ -138,6 +140,7 @@ impl AsmProver {
             program_cache: RwLock::new(HashMap::new()),
             current_with_hints: AtomicBool::new(false),
             current_emulator_only: AtomicBool::new(false),
+            current_program: RwLock::new(None),
         })
     }
 
@@ -199,6 +202,7 @@ impl AsmProver {
             let resources =
                 entry.resources.clone().expect("full-asm cache entry must have ASM resources");
             self.core_prover.backend.set_asm_resources(resources)?;
+            *self.current_program.write().unwrap() = Some(elf.program_id.hash_id.to_string());
             return Ok(());
         }
 
@@ -242,6 +246,7 @@ impl AsmProver {
 
         let resources = Arc::new(AsmResources::new(shared, asm_services)?);
         self.core_prover.backend.set_asm_resources(resources.clone())?;
+        *self.current_program.write().unwrap() = Some(elf.program_id.hash_id.to_string());
         self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
         self.program_cache.write().unwrap().insert(
             SetupKey::new(&*elf.program_id.hash_id, with_hints, false),
@@ -271,6 +276,7 @@ impl AsmProver {
         };
 
         self.core_prover.backend.clear_asm_resources()?;
+        *self.current_program.write().unwrap() = None;
 
         let pctx = self.core_prover.backend.get_pctx()?;
         let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
@@ -309,6 +315,24 @@ impl AsmProver {
     ) -> Result<VerifyConstraintsOutput> {
         self.register_program_for_emulator(&program.program_id)?;
         self.core_prover.backend.verify_constraints(stdin, debug_info)
+    }
+
+    /// Stop the ASM services of `program_id`. It must not overlap setup, register_program or prove.
+    pub fn remove_program(&self, program_id: &ProgramId) -> Result<()> {
+        let mut program_cache = self.program_cache.write().unwrap();
+        let mut current_program = self.current_program.write().unwrap();
+        if current_program.as_deref() == Some(&*program_id.hash_id) {
+            self.core_prover.backend.clear_asm_resources()?;
+            *current_program = None;
+        }
+        let mut keys: Vec<SetupKey> =
+            program_cache.keys().filter(|key| key.hash_id == program_id.hash_id).cloned().collect();
+        // Hinted first, because the non-hinted semaphore prefix also matches hinted names.
+        keys.sort_by_key(|key| !key.with_hints);
+        for key in keys {
+            program_cache.remove(&key);
+        }
+        Ok(())
     }
 }
 
@@ -454,6 +478,8 @@ impl ProverEngine for AsmProver {
             Some(r) => self.core_prover.backend.set_asm_resources(r)?,
             None => self.core_prover.backend.clear_asm_resources()?,
         }
+        *self.current_program.write().unwrap() =
+            (!emulator_only).then(|| program_id.hash_id.to_string());
 
         self.current_with_hints.store(with_hints, Ordering::SeqCst);
         self.current_emulator_only.store(emulator_only, Ordering::SeqCst);

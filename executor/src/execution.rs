@@ -79,9 +79,13 @@ impl ExecutionPhase {
         Ok(())
     }
 
-    /// Clears the runtime flag so subsequent `run` calls route through the Rust emulator.
-    pub fn clear_asm_resources(&self) {
+    /// Drops the installed resources and routes subsequent `run` calls through the Rust emulator.
+    pub fn clear_asm_resources(&self) -> ExecutorResult<()> {
         self.is_asm_execution.store(false, Ordering::Relaxed);
+        match &self.emulator_asm {
+            Some(asm) => asm.clear_asm_resources(),
+            None => Ok(()),
+        }
     }
 
     /// Resets the ASM pipeline (hints stream + input shmem) only when
@@ -167,7 +171,7 @@ mod tests {
     #[test]
     fn clear_without_set_is_safe() {
         let phase = ExecutionPhase::new(1024, true);
-        phase.clear_asm_resources();
+        phase.clear_asm_resources().expect("must be a silent no-op");
         assert!(!phase.is_asm_execution());
     }
 
