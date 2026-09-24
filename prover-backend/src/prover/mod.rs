@@ -959,6 +959,11 @@ impl ZiskProver<Asm> {
     ) -> Result<VerifyConstraintsOutput> {
         self.prover.verify_constraints_emulator(program, stdin, debug_info)
     }
+
+    /// See [`AsmProver::remove_program`].
+    pub fn remove_program(&self, program_id: &ProgramId) -> Result<()> {
+        self.prover.remove_program(program_id)
+    }
 }
 
 // EMU-specific setup implementation

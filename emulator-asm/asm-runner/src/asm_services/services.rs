@@ -5,8 +5,9 @@ use crate::{
 };
 use anyhow::{Context, Result};
 
+use std::collections::BTreeMap;
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::time::Duration;
 use std::{fmt, path::Path, process::Command};
@@ -128,6 +129,9 @@ pub struct AsmServices {
     inner: Arc<AsmServicesInner>,
 }
 
+/// Live `AsmServicesInner` per shmem prefix, which share the segments under it.
+static LIVE_SERVICES: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
+
 struct AsmServicesInner {
     service: StdioService,
     shm_prefix: String,
@@ -202,6 +206,7 @@ impl AsmServices {
             &sem_prefix,
         )?;
 
+        *LIVE_SERVICES.lock().unwrap().entry(shm_prefix.clone()).or_default() += 1;
         let inner = AsmServicesInner { service: stdio_service, shm_prefix, sem_prefix };
 
         for service in &Self::SERVICES {
@@ -266,7 +271,7 @@ impl AsmServices {
             // all `{shm_prefix}*` entries (per-service *and* the untagged
             // `_input`/`_precompile`/`_control` ones); the semaphore sweep is a
             // no-op here since no semaphores exist yet at creation time.
-            super::janitor::cleanup_prefix(shm_prefix, sem_prefix);
+            super::janitor::cleanup_prefix(Some(shm_prefix), sem_prefix);
         }
         result
     }
@@ -341,7 +346,7 @@ impl AsmServices {
             // all `{shm_prefix}*` entries (per-service *and* the untagged
             // `_input`/`_precompile`/`_control` ones); the semaphore sweep is a
             // no-op here since no semaphores exist yet at creation time.
-            super::janitor::cleanup_prefix(shm_prefix, sem_prefix);
+            super::janitor::cleanup_prefix(Some(shm_prefix), sem_prefix);
             return Err(anyhow::anyhow!("One or more shmem creation commands failed"));
         }
         Ok(())
@@ -462,14 +467,18 @@ impl AsmServicesInner {
         Ok(())
     }
 
-    /// Unlink every `/dev/shm/{shm_prefix}*` shmem segment and
-    /// `/dev/shm/sem.{sem_prefix}*` semaphore. The C-side `server_cleanup`
+    /// Unlink every `/dev/shm/sem.{sem_prefix}*` semaphore, and every `/dev/shm/{shm_prefix}*`
+    /// shmem segment once no other services of this process remain. The C-side `server_cleanup`
     /// only unlinks if `delete_input_shm`/`delete_output_shm` flags are
     /// set — which the long-running ASM service children don't have — so
     /// the parent has to do it. Call after `stop_asm_services` so the
     /// children are already detached from the segments.
     fn cleanup_my_shmem(&self) {
-        super::janitor::cleanup_prefix(&self.shm_prefix, &self.sem_prefix);
+        let mut live = LIVE_SERVICES.lock().unwrap();
+        let count = live.get_mut(&self.shm_prefix).expect("counted when created");
+        *count -= 1;
+        let last = *count == 0;
+        super::janitor::cleanup_prefix(last.then_some(self.shm_prefix.as_str()), &self.sem_prefix);
     }
 }
 
