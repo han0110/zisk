@@ -257,8 +257,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// Clears any previously-installed ASM resources. No-op when the
     /// executor was built with the Rust emulator backend.
     pub fn clear_asm_resources(&self) -> ExecutorResult<()> {
-        self.execution.clear_asm_resources();
-        Ok(())
+        self.execution.clear_asm_resources()
     }
 
     /// Retires whatever the previous run left behind: drains a ROM-histogram runner

@@ -382,6 +382,13 @@ impl AsmProver {
         self.register_program_for_emulator(&program.program_id)?;
         self.core_prover.backend.verify_constraints(stdin, seed, debug_info)
     }
+
+    /// Stop the ASM services of `program_id`. It must not overlap a setup or a job.
+    pub fn remove_program(&self, program_id: &ProgramId) -> Result<()> {
+        self.core_prover.backend.clear_asm_resources()?;
+        self.program_cache.write().unwrap().retain(|key, _| key.hash_id != program_id.hash_id);
+        Ok(())
+    }
 }
 
 impl ProverEngine for AsmProver {

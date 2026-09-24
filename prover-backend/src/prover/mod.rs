@@ -1207,6 +1207,11 @@ impl ZiskProver<Asm> {
         let seed = self.resolve_random_seed(seed)?;
         self.prover.verify_constraints_emulator(program, stdin, seed, debug_info)
     }
+
+    /// See [`AsmProver::remove_program`].
+    pub fn remove_program(&self, program_id: &ProgramId) -> Result<()> {
+        self.prover.remove_program(program_id)
+    }
 }
 
 // EMU-specific setup implementation
