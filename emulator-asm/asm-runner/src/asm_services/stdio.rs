@@ -200,6 +200,12 @@ impl StdioService {
         let mut child = super::spawner::spawn(command)
             .with_context(|| format!("Failed to spawn stdio service {asm_service}"))?;
 
+        // Not in a `pre_exec` hook, which makes `spawn` fork this large process.
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        unsafe {
+            libc::setpriority(libc::PRIO_PROCESS, child.id(), -5);
+        }
+
         // Until the child is in a handle, which stops it when dropped, a failure must
         // stop it by hand: it writes the shared segments as it starts.
         let stop = |mut child: std::process::Child| {

@@ -1,7 +1,7 @@
 //! Starting the services' processes.
 //!
 //! A service asks to be killed when its parent dies (`PR_SET_PDEATHSIG`, set by
-//! `build_service_command`), so that none outlives a crashed parent with its segments locked in
+//! the service binary), so that none outlives a crashed parent with its segments locked in
 //! memory. On Linux its parent is the thread that started it, not the process: a service started
 //! from a thread that later exits is killed with that thread, though the process lives on.
 //! Programs are set up from such threads, for instance the tokio blocking-pool threads the
