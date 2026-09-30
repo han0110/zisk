@@ -3614,6 +3614,9 @@ impl Stats {
     pub fn get_ram_usage(&self, inst_ctx: &InstContext) -> u64 {
         self.ram_monitor.get_usage(inst_ctx)
     }
+    pub fn get_costs(&self) -> &StatsCosts {
+        &self.costs
+    }
     pub fn set_coverage(&mut self, value: bool) {
         self.coverage = value;
     }
