@@ -179,13 +179,14 @@ impl AsmRunnerMT {
                     let should_exit = emu_trace.end;
 
                     emu_traces.push(emu_trace);
-                    if let Err(e) = on_chunk(chunk_id.0, &emu_traces, should_exit) {
-                        signal_runner_failure();
-                        break Err(e.context("MT chunk callback failed"));
-                    }
-
+                    // The last chunk goes to `on_chunk` only after the service result is known, so a
+                    // failed run never starts the witness of its last Main instance.
                     if should_exit {
                         break Ok(0);
+                    }
+                    if let Err(e) = on_chunk(chunk_id.0, &emu_traces, false) {
+                        signal_runner_failure();
+                        break Err(e.context("MT chunk callback failed"));
                     }
                     chunk_id.0 += 1;
                 }
@@ -266,6 +267,8 @@ impl AsmRunnerMT {
                 response.allocated_len
             ));
         }
+
+        on_chunk(chunk_id.0, &emu_traces, true).context("MT chunk callback failed")?;
 
         stats_end!(_stats, &_runner_scope);
         Ok((emu_traces, asm_execution_info))
