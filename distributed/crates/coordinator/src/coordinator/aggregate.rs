@@ -684,8 +684,11 @@ impl Coordinator {
         let proof_type = {
             let jobs_map = self.jobs.read().await;
             let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
-            let proof_type = job_entry.read().await.proof_type;
-            proof_type
+            let mut job = job_entry.write().await;
+            job.timeline
+                .starts
+                .insert(dispatch.worker.clone(), Utc::now().timestamp_millis() as u64);
+            job.proof_type
         };
 
         let agg_proofs: Vec<ProofStarkDto> = dispatch

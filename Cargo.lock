@@ -4005,7 +4005,7 @@ dependencies = [
 [[package]]
 name = "pil-info"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "indexmap 2.14.2",
  "num-bigint",
@@ -4019,7 +4019,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4030,7 +4030,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4045,7 +4045,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "anyhow",
  "clap",
@@ -4074,7 +4074,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "colored",
  "proofman-common",
@@ -4093,7 +4093,7 @@ dependencies = [
 [[package]]
 name = "pilfflonk-setup"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4112,7 +4112,7 @@ dependencies = [
 [[package]]
 name = "pilfflonk-wrap-witness"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "cc",
  "proofman-common",
@@ -4329,7 +4329,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "bincode",
  "blake3",
@@ -4364,7 +4364,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "borsh",
  "colored",
@@ -4395,7 +4395,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "proofman-fields",
 ]
@@ -4403,7 +4403,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -4418,7 +4418,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -4430,7 +4430,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4442,7 +4442,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4452,7 +4452,7 @@ dependencies = [
 [[package]]
 name = "proofman-pilfflonk"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "libloading",
  "num-bigint",
@@ -4468,7 +4468,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -4477,12 +4477,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 
 [[package]]
 name = "proofman-util"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4491,7 +4491,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4503,7 +4503,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.4.0-alpha"
-source = "git+https://github.com/han0110/pil2-proofman?rev=c6e08bf72e09b01cfc568e948f1c2df5dedf45f0#c6e08bf72e09b01cfc568e948f1c2df5dedf45f0"
+source = "git+https://github.com/han0110/pil2-proofman?rev=8a5554bf7efa1310742423ad631e802f5975c961#8a5554bf7efa1310742423ad631e802f5975c961"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -7666,6 +7666,7 @@ dependencies = [
  "hex",
  "metrics",
  "metrics-exporter-prometheus",
+ "prost 0.14.4",
  "serde",
  "signal-hook",
  "signal-hook-tokio",
@@ -8396,7 +8397,9 @@ dependencies = [
  "libc",
  "proofman",
  "proofman-common",
+ "proofman-util",
  "proofman-verifier",
+ "prost 0.14.4",
  "rayon",
  "serde",
  "signal-hook",
@@ -8412,6 +8415,7 @@ dependencies = [
  "zisk-cluster-common",
  "zisk-common",
  "zisk-coordinator",
+ "zisk-coordinator-api",
  "zisk-prover-backend",
  "zisk-recurser",
 ]

@@ -551,6 +551,8 @@ impl From<DomainExecutionStats> for ExecutionStats {
                     count: p.count,
                 })
                 .collect(),
+            proof_start: stats.proof_start.map(datetime_to_ts),
+            tasks: stats.tasks,
         }
     }
 }
@@ -719,6 +721,8 @@ impl From<ExecutionStats> for DomainExecutionStats {
                     count: p.count,
                 })
                 .collect(),
+            proof_start: stats.proof_start.and_then(ts_to_datetime),
+            tasks: stats.tasks,
         }
     }
 }

@@ -393,6 +393,9 @@ pub struct ZiskAggPhaseResult {
     pub agg_proofs: Vec<AggProofs>,
 }
 
+/// Timeline records of a task, each with its air name.
+pub type ProofTimeline = Vec<(String, proofman::ProofRecord)>;
+
 /// Backend-specific proving engine.
 ///
 /// Implemented by each backend ([`EmuProver`], [`AsmProver`]) to drive setup,
@@ -446,6 +449,9 @@ pub trait ProverEngine {
 
     /// Witness metadata and executor timing from the last run.
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)>;
+
+    /// Takes the [`ProofTimeline`] of the last task.
+    fn take_proof_records(&self) -> ProofTimeline;
 
     /// Read a range of witness rows for the given instance.
     fn get_instance_trace(
@@ -856,6 +862,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Witness metadata and executor timing from the last run.
     pub fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
         self.prover.get_execution_info()
+    }
+
+    /// Takes the [`ProofTimeline`] of the last task.
+    pub fn take_proof_records(&self) -> ProofTimeline {
+        self.prover.take_proof_records()
     }
 
     /// Begin a job running `program`, which must have been set up: register its

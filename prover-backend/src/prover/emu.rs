@@ -177,6 +177,10 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.get_execution_info()
     }
 
+    fn take_proof_records(&self) -> super::ProofTimeline {
+        self.core_prover.backend.take_proof_records()
+    }
+
     fn begin_job(&self, program: &GuestProgram) -> Result<ProverJob> {
         self.begin_job_for(&program.program_id, false)
     }

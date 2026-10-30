@@ -114,6 +114,7 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     zisk_worker::telemetry::mark_process_start();
+    proofman_util::timeline::set_recording(true);
     zisk_worker::stop::stop_on_signals()?;
     let cli = Cli::parse();
 

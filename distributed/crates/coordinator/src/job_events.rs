@@ -1,7 +1,10 @@
+use chrono::{DateTime, Utc};
 use zisk_cluster_common::JobPhase;
+use zisk_cluster_common::TaskRecord;
 use zisk_common::{AirInstanceCount, RandomSeed, ZiskExecutorTime};
 
 /// Events broadcast on the per-job channel as the job transitions through states.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum CoordinatorJobEvent {
     /// Job accepted and waiting to start.
@@ -92,4 +95,8 @@ pub struct CoordinatorExecutionStats {
     pub executor_time: ZiskExecutorTime,
     /// Per-AIR instance plan.
     pub plan: Vec<AirInstanceCount>,
+    /// Start of the contributions phase.
+    pub proof_start: Option<DateTime<Utc>>,
+    /// The tasks of the job with their timing.
+    pub tasks: Vec<TaskRecord>,
 }

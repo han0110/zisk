@@ -30,6 +30,8 @@ use super::{
     DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
 use crate::errors::{internal, ApiError, ApiResult};
+use crate::proto::{self, TaskTiming};
+use prost::Message;
 use zisk_cluster_common::{
     DataId, HintsModeDto, InputStreamDataDto, InputsModeDto, LaunchProofRequestDto,
     LaunchWrapRequestDto, ProofKind,
@@ -91,6 +93,18 @@ fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
                 airgroup_id: p.airgroup_id,
                 air_id: p.air_id,
                 count: p.count,
+            })
+            .collect(),
+        proof_start: s.proof_start,
+        tasks: s
+            .tasks
+            .into_iter()
+            .map(|t| TaskTiming {
+                worker_id: t.worker_id.as_string(),
+                phase: proto::JobPhase::from(coord_phase_to_domain(&t.phase)).into(),
+                coordinator_end: t.coordinator_end,
+                coordinator_start: t.coordinator_start,
+                ..TaskTiming::decode(t.timing.as_slice()).unwrap_or_default()
             })
             .collect(),
     }

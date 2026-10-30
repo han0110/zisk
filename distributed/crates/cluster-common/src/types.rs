@@ -346,6 +346,8 @@ pub struct Job {
     /// Seed every emulation of the job runs with. Set for prove and execute jobs; `None` for
     /// jobs that run no guest (wrap, recurser).
     pub random_seed: Option<RandomSeed>,
+    /// The tasks of the job with their timing.
+    pub timeline: crate::JobTimeline,
 }
 
 impl Job {
@@ -393,6 +395,7 @@ impl Job {
             execution_only,
             proof_type,
             random_seed: None,
+            timeline: Default::default(),
         }
     }
 
@@ -472,6 +475,7 @@ impl Job {
         self.phase_timings.clear();
         self.challenges = None;
         self.agg = None;
+        self.timeline = Default::default();
     }
 }
 

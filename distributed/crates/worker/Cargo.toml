@@ -23,12 +23,14 @@ bytes = { workspace = true }
 zisk-cluster-common = { workspace = true }
 zisk-cluster-api = { workspace = true }
 zisk-coordinator = { workspace = true }
+zisk-coordinator-api = { workspace = true }
 
 zisk-common = { workspace = true }
 zisk-asm-runner = { workspace = true }
 zisk-prover-backend = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
+proofman-util = { workspace = true }
 proofman-verifier = { workspace = true, default-features = true }
 bincode = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
@@ -36,6 +38,7 @@ rayon = { workspace = true }
 zisk-recurser = { workspace = true }
 
 tonic = { workspace = true }
+prost = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }

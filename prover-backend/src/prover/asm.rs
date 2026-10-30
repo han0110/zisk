@@ -559,6 +559,10 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.get_execution_info()
     }
 
+    fn take_proof_records(&self) -> super::ProofTimeline {
+        self.core_prover.backend.take_proof_records()
+    }
+
     /// Begin a job running `program_id`, set up with `with_hints`; see [`ProverJob`].
     ///
     /// The program is looked up for every job, since each setup leaves the last

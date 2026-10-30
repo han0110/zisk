@@ -13,6 +13,7 @@ pub mod agg_tree;
 pub mod dto;
 /// The Prometheus text format, for series the `metrics` facade cannot express.
 pub mod prometheus_text;
+pub mod timeline;
 /// Logging/tracing initialization helpers.
 pub mod tracing;
 /// Core cluster types: worker ids, states, capacities, and job phases.
@@ -20,5 +21,6 @@ pub mod types;
 
 pub use agg_tree::*;
 pub use dto::*;
+pub use timeline::*;
 pub use tracing::*;
 pub use types::*;

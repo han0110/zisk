@@ -516,6 +516,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         registry.write_pub_outs(&pub_outs.0);
 
         stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
+        proofman_util::timer_start_debug!(CONFIGURE_INSTANCES);
         // Two rounds, with the first collected early and every secondary placed on registration,
         // only when the memory airs come from the device: with the CPU witness the memory
         // instances would need a second collect pass of their own, which costs more than the
@@ -602,6 +603,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             Ok(mem_artifacts)
         })?;
 
+        proofman_util::timer_stop_and_log_debug!(CONFIGURE_INSTANCES);
         stats_end!(self.state.stats, &_config_scope);
 
         // The debug cross-check, which the collectors read when they are built, right after

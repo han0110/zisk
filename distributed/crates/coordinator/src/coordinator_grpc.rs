@@ -173,6 +173,7 @@ impl CoordinatorGrpc {
                 }
                 worker_message::Payload::ExecuteTaskResponse(execute_task_response) => {
                     Self::validate_same_worker_id(worker_id, &execute_task_response.worker_id)?;
+                    coordinator.record_task(worker_id, &execute_task_response).await;
                     coordinator
                         .handle_stream_execute_task_response(execute_task_response.into())
                         .await

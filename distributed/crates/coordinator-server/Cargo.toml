@@ -26,6 +26,7 @@ zisk-core = { workspace = true }
 
 # gRPC
 tonic = { workspace = true }
+prost = { workspace = true }
 tonic-health = { workspace = true }
 
 # Async

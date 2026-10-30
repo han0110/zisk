@@ -283,6 +283,10 @@ pub struct DomainExecutionStats {
     pub executor_time: DomainExecutorTime,
     /// Per-AIR instance plan (execute jobs only; empty otherwise).
     pub plan: Vec<DomainAirInstanceCount>,
+    /// Start of the contributions phase.
+    pub proof_start: Option<DateTime<Utc>>,
+    /// The tasks of the job with their timing.
+    pub tasks: Vec<crate::grpc::proto::TaskTiming>,
 }
 
 /// Per-AIR planned instance count; the AIR name is derived from the ids by the consumer.

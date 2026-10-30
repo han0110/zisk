@@ -75,6 +75,42 @@ message ExecutionStats {
   CostPerType  cost_per_type  = 3;
   ExecutorTime executor_time  = 4;
   repeated AirInstanceCount plan = 5;
+  google.protobuf.Timestamp proof_start = 6; // start of the contributions phase
+  repeated TaskTiming       tasks       = 7;
+}
+
+// One worker task. The coordinator stamps the dispatch and the receipt, and the
+// worker stamps its receipt and its reply, all in Unix milliseconds.
+message TaskTiming {
+  string                    worker_id             = 1;
+  JobPhase                  phase                 = 2;
+  uint64                    coordinator_end       = 3;
+  ExecutorTime              executor_time         = 5; // contributions phase only
+  repeated ProofTiming      proof_timings         = 7;
+  uint64                    coordinator_start     = 8;
+  uint64                    worker_start          = 9;
+  uint64                    worker_end            = 10;
+  repeated string           names                 = 12; // span names, indexed by Span.name
+}
+
+// One proof proofman produced, stamped in Unix milliseconds on the worker clock.
+message ProofTiming {
+  uint32 id              = 1; // instance id, the fold index of a fold record, or zero for a root step
+  uint32 proof_type      = 2; // proofman ProofType as_usize
+  uint32 airgroup_id     = 3;
+  string air_name        = 4; // empty for a root step of the contributions phase, a fold and the two final proofs
+  uint64 start           = 5;
+  uint64 end             = 6;
+  map<string, uint32> breakdown_ms = 7; // the proof sections by name, only the nonzero ones, v1.3.x only
+  repeated Span spans    = 8;
+}
+
+// One upstream timer span, in Unix microseconds on the worker clock.
+message Span {
+  uint32     name     = 1; // index into TaskTiming.names
+  uint64     start_us = 2;
+  uint64     end_us   = 3;
+  uint32     depth    = 4; // nesting depth inside its proof
 }
 
 // Per-AIR planned instance count (the AIR name is derived from the ids by the consumer).

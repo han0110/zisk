@@ -734,6 +734,22 @@ impl ProverBackend {
         self.proofman.reset_aggregation_state()
     }
 
+    pub(crate) fn take_proof_records(&self) -> super::ProofTimeline {
+        let global_info = &self.proofman.get_wcm().get_pctx().global_info;
+        self.proofman
+            .take_proof_records()
+            .into_iter()
+            .map(|record| {
+                let per_instance = proofman::RECORD_KIND_PER_INSTANCE.contains(&record.proof_type);
+                let air_name = match per_instance {
+                    true => global_info.get_air_name(record.airgroup_id, record.air_id).to_string(),
+                    false => String::new(),
+                };
+                (air_name, record)
+            })
+            .collect()
+    }
+
     pub(crate) fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
         self.proofman
             .register_aggregated_proofs(agg_proofs)

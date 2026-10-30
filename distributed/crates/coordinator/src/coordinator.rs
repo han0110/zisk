@@ -34,6 +34,7 @@ pub(crate) mod aggregate;
 pub(crate) mod contributions;
 pub(crate) mod prove;
 mod telemetry;
+mod timeline;
 pub(crate) mod worker_handlers;
 pub(crate) mod wrap;
 
@@ -244,6 +245,8 @@ fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
         other_cost: cost.other_cost,
         executor_time: executor_time_from_job(job),
         plan: plan_from_job(job),
+        proof_start: job.phase_start_time(&JobPhase::Contributions),
+        tasks: job.timeline.tasks.clone(),
     }
 }
 
@@ -2064,7 +2067,7 @@ mod tests {
     }
 
     /// Helper: create a Coordinator with workers and a Running job inserted.
-    async fn setup_coordinator_with_job(
+    pub(super) async fn setup_coordinator_with_job(
         n_workers: usize,
         phase: JobPhase,
         config_overrides: impl FnOnce(&mut Config),

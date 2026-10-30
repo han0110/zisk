@@ -353,6 +353,7 @@ message ExecuteTaskResponse {
     ProofList partial_agg_proofs = 12;
   }
   bool worker_in_recovery = 11;
+  bytes timing = 13; // encoded zisk.coordinator.v1.TaskTiming
 }
 
 message WitnessExecInfo {

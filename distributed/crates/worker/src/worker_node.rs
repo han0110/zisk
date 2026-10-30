@@ -30,6 +30,8 @@ use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
 use crate::config::WorkerServiceConfig;
 use crate::telemetry::{self, ExitReason};
 
+mod timeline;
+
 /// The MPI tag of a peer rank's reply that it has stopped a cancelled job's work.
 /// Apart from proofman's own: 999996 to 999999, and air group ids for proofs.
 pub(crate) const CANCEL_DONE_TAG: i32 = 999_900;
@@ -303,6 +305,8 @@ pub struct WorkerNodeGrpc<T: ZiskBackend + 'static> {
     setup_in_flight: Option<JoinHandle<()>>,
     /// The recovery draining a cancelled job, which a setup waits for.
     recovery: Option<JoinHandle<()>>,
+    /// When the worker received its last task, in Unix milliseconds.
+    worker_start: u64,
 }
 
 /// Work [`WorkerNodeGrpc`] holds back until the worker can take it.
@@ -351,6 +355,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             deferred: VecDeque::new(),
             setup_in_flight: None,
             recovery: None,
+            worker_start: 0,
         })
     }
 
@@ -880,6 +885,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data: result_data_msg,
                 error_message,
                 worker_in_recovery,
+                timing: self.task_timing(),
             })),
         };
 
@@ -1005,6 +1011,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data: result_data_msg,
                 error_message,
                 worker_in_recovery,
+                timing: self.task_timing(),
             })),
         };
 
@@ -1077,6 +1084,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data: Some(ResultData::Proofs(ProofList { proofs: result_data })),
                 error_message,
                 worker_in_recovery,
+                timing: self.task_timing(),
             })),
         };
 
@@ -1124,6 +1132,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data: Some(ResultData::PartialAggProofs(ProofList { proofs })),
                 error_message: String::new(),
                 worker_in_recovery: false,
+                timing: self.task_timing(),
             })),
         };
         message_sender.send(message)?;
@@ -1141,6 +1150,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         outcome: AggOutcome,
     ) -> Result<()> {
         let AggOutcome { executed_steps, proof_type, instances, is_final, drain } = outcome;
+        // An absorb ack ends no round, so its timing waits for the drain, which holds every fold.
+        let absorb_ack = !is_final && !drain && matches!(result, Ok(None));
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
         }
@@ -1272,6 +1283,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data,
                 error_message,
                 worker_in_recovery: false,
+                timing: if absorb_ack { Vec::new() } else { self.task_timing() },
             })),
         };
 
@@ -1540,6 +1552,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
             }
             coordinator_message::Payload::ExecuteTask(request) => {
+                self.worker_start = chrono::Utc::now().timestamp_millis() as u64;
                 // A task waits for a setup in flight, and for whatever was held back before
                 // it, unless it continues the current job, which setups wait for.
                 let continues_current_job = match self.worker.current_job() {
@@ -1956,6 +1969,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     result_data: None,
                     error_message: e.to_string(),
                     worker_in_recovery: false,
+                    timing: Vec::new(),
                 })),
             };
             if let Err(send_err) = message_sender.send(response) {
@@ -2723,6 +2737,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 result_data,
                 error_message,
                 worker_in_recovery: false,
+                timing: Vec::new(),
             })),
         };
 
